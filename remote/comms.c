@@ -1,3 +1,5 @@
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+
 #include<stdio.h> // standard input/output
 #include<winsock2.h> // windows socket header
 
