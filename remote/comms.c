@@ -1,4 +1,4 @@
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define _WINSOCK_DEPRECATED_NO_WARNINGS // TODO - might want to fix this
 
 #include<stdio.h> // standard input/output
 #include<winsock2.h> // windows socket header
@@ -35,9 +35,9 @@ int main(int argc, char* argv[]) {
 	// connect to the server
 	if (connect(sock, (struct sockaddr*)&server, sizeof(server)) != 0) {
 		printf("Could not connect! Error code: %d\n", WSAGetLastError());
+	} else {
+		printf("Connected\n");
 	}
-
-	printf("Connected\n");
 
 	return 0;
 }
