@@ -14,3 +14,13 @@ if __name__ == "__main__":
 	(clientsocket, address) = serversocket.accept()
 
 	print('Client connected')
+
+	# echo messages back to the sender
+	while True:
+		data = clientsocket.recv(4096)
+		if not data:
+			break
+		print(data)
+		data_s = b'ECHO: ' + data + b'\0'
+		print(data_s)
+		clientsocket.sendall(data_s)
