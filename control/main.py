@@ -54,13 +54,14 @@ class mainSockThread (threading.Thread):
 				print(inst)
 				sleep(10)
 			if not data:
-				# TODO - why wouldn't there be data?
-				print("No data received!")
+				# TODO - connection closed
+				print("Connection closed! TODO - Exit program...")
+				sleep(1)
 				continue
 			if data[0] == PRINT_INFO:
-				print(repr(data[1:]))
+				print(str(data[1:], 'UTF-8'))
 			elif data[0] == NEW_CURR_DIR:
-				currDir = repr(data[1:])
+				currDir = str(data[1:], 'UTF-8')
 
 """
 	Create a server socket and listen for an incoming connection
@@ -112,6 +113,7 @@ def handleCommand(cmd, mainSock):
 			print("Please provide a directory to change to")
 			return
 		mainSock.sendall(bytes([CHANGE_DIR]) + cmd[3:].encode('UTF-8') + b'\0')
+		sleep(0.2)
 	elif cmd in ["ls", "dir"]:
 		mainSock.sendall(bytes([LIST_DIR]) + b'\0')
 		# TODO - option to list contents from arbitrary directory?
@@ -168,7 +170,7 @@ def handleCommand(cmd, mainSock):
 			print("Incorrect command usage! Use \"help\" to see commands")
 	elif cmd == "terminate":
 		mainSock.sendall(bytes([KILL_PROC, 0]))
-	else:
+	elif cmd != '':
 		print("Unknown command received! Use \"help\" to list available commands")
 
 """
