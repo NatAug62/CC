@@ -35,6 +35,7 @@ currDir = ""
 """
 	Create a class to handle information received on the main socket
 	This class will run as a separate thread
+	TODO - refactor this to be part of the protocol for each individual command
 """
 class mainSockThread (threading.Thread):
 	def __init__(self, mainSock):
