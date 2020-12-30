@@ -2,6 +2,7 @@ from time import sleep
 from shlex import split as shlexSplit
 import socket
 import threading
+import pygame
 
 SERVER_PORT = 8080
 
@@ -175,6 +176,80 @@ def handleCommand(cmd, mainSock):
 		print("Unknown command received! Use \"help\" to list available commands")
 
 """
+	Method for testing things before fully implementing them
+	Currently testing video stream
+	TODO - delete once no longer needed
+"""
+def test(mainSock):
+	# initialize the pygame module
+	pygame.init()
+	# load and set the logo
+	pygame.display.set_caption("minimal program")
+
+	# create a surface on screen that has the size of 240 x 180
+	screen = pygame.display.set_mode((1920,1080))
+
+	# define a variable to control the main loop
+	running = True
+	# buffer to hold data and way to track file size
+	fileSize = 8294400
+	data = b''
+	buff = b''
+	imgBuff = b''
+	surf = None
+	dirty = False
+
+	# main loop
+	while running:
+		# get next frame
+		try:
+			data = mainSock.recv(4096)
+			if fileSize == 0 and len(data) >= 4:
+				fileSize = int.from_bytes(data[0:4], byteorder='big', signed=True)
+				printf(f'File size: {fileSize}')
+				imgBuff = [0 for x in range(0, fileSize)]
+				data = data[4:]
+			if len(data) > 0:
+				buff = buff + data
+			if len(buff) >= fileSize:
+				imgBuff = buff[0:fileSize]
+				surf = pygame.image.frombuffer(imgBuff, (1920, 1080), "RGBX")
+				buff = buff[fileSize:]
+				dirty = True
+		except Exception as inst:
+			print(type(inst))
+			print(inst.args)
+			print(inst)
+			sleep(10)
+		if not data:
+			# TODO - connection closed
+			print("Connection closed! TODO - Exit program...")
+			quit()
+
+		#percent = int(len(buff) * 100 / fileSize)
+		#print(f'Buffer is {percent} full')
+
+		if surf != None and dirty:
+			print("New frame!")
+			screen.fill((255, 255, 255))
+			screen.blit(surf, (0,0))
+			pygame.display.flip()
+			screen.fill((255, 255, 255))
+			screen.blit(surf, (0,0))
+			dirty = False
+		elif dirty:
+			print("surf is NONE!")
+
+		#pygame.display.flip()
+
+		# event handling, gets all event from the event queue
+		for event in pygame.event.get():
+			# only do something if the event is of type QUIT
+			if event.type == pygame.QUIT:
+				# change the value to False, to exit the main loop
+				running = False
+
+"""
 	Run the main loop for getting user input and 
 """
 def main():
@@ -184,8 +259,11 @@ def main():
 	mainSock = openConnection(SERVER_PORT)
 
 	# start a separate thread to listen for info received on the main socket
-	mainListenThread = mainSockThread(mainSock)
-	mainListenThread.start()
+	#mainListenThread = mainSockThread(mainSock)
+	#mainListenThread.start()
+
+	# call to testing method
+	test(mainSock)
 
 	# main command loop
 	cmd = input(f"{currDir}>")

