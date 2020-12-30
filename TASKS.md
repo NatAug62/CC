@@ -4,9 +4,9 @@ This file will be used to keep track of planned features and the tasks necessary
 # Tasks
 ### File System Stuff
 ##### File System Traversal
-- [ ] track current directory
-- [ ] list directory contents
-- [ ] change current directory
+- [X] track current directory
+- [X] list directory contents
+- [X] change current directory
 ##### Transfer Files
 - [ ] upload file to victim computer
 - [ ] download file from victim computer
