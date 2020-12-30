@@ -1,5 +1,5 @@
 # Description
-This file will be used to keep track of planned features and the tasks necessary to implement those features
+This file will be used to keep track of planned features and the tasks necessary to implement those features. For a more detailed and up-to-date view, look at the project issues tab.
 
 # Tasks
 ### File System Stuff
