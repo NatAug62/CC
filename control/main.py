@@ -187,7 +187,7 @@ def test(mainSock):
 	pygame.display.set_caption("minimal program")
 
 	# create a surface on screen that has the size of 240 x 180
-	screen = pygame.display.set_mode((800,800))#(1920,1080))
+	screen = pygame.display.set_mode((768,432))#(1920,1080))
 
 	# define a variable to control the main loop
 	running = True
@@ -213,7 +213,8 @@ def test(mainSock):
 				buff = buff + data
 			if len(buff) >= fileSize:
 				imgBuff = buff[0:fileSize]
-				surf = pygame.image.frombuffer(imgBuff, (1920, 1080), "RGBX")
+				surf = pygame.image.frombuffer(imgBuff, (1920, 1080), "RGBA")
+				surf = pygame.transform.scale(surf, (768,432))
 				buff = buff[fileSize:]
 				dirty = True
 		except Exception as inst:
@@ -234,8 +235,6 @@ def test(mainSock):
 			screen.fill((255, 255, 255))
 			screen.blit(surf, (0,0))
 			pygame.display.flip()
-			screen.fill((255, 255, 255))
-			screen.blit(surf, (0,0))
 			dirty = False
 		elif dirty:
 			print("surf is NONE!")

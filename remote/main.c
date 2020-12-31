@@ -310,6 +310,29 @@ void videoStreamTest() {
 	if (!BitBlt(hMemoryDC, 0, 0, width, height, hScreenDC, 0, 0, SRCCOPY)) {
 		printf("Error: %d\n", GetLastError());
 	}
+
+	// draw the mouse cursor onto the image
+	// modified from https://stackoverflow.com/questions/1628919/capture-screen-shot-with-mouse-cursor
+	CURSORINFO cursor;
+	cursor.cbSize = sizeof(CURSORINFO);
+	if (!GetCursorInfo(&cursor)) {
+		printf("Error getting cursor info: %d\n", GetLastError());
+		exitOnError();
+	}
+	if (cursor.flags == CURSOR_SHOWING) {
+		ICONINFOEXA info;
+		info.cbSize = sizeof(ICONINFOEXA);
+		GetIconInfoExA(cursor.hCursor, &info);
+		int x = cursor.ptScreenPos.x - info.xHotspot;
+		int y = cursor.ptScreenPos.y - info.yHotspot;
+		BITMAP bmpCursor;
+		bmpCursor.bmType = 0;
+		GetObject(info.hbmColor, sizeof(bmpCursor), &bmpCursor);
+		DrawIconEx(hMemoryDC, x, y, cursor.hCursor, bmpCursor.bmWidth, bmpCursor.bmHeight,
+			0, NULL, DI_NORMAL);
+	}
+
+	// pull the bitmap out of the HDC memory
 	hBitmap = (HBITMAP)SelectObject(hMemoryDC, holdBitmap);
 
 	// clean up
@@ -362,6 +385,7 @@ void videoStreamTest() {
 		frames++;
 	}*/
 
+	// vertically flip the image - just something with how the screen capture works
 	for (int row = 0; row < height; row++) {
 		for (int b = 0; b < width * 4; b++) {
 			int idx = ((height - row - 1) * width * 4) + b;
@@ -370,6 +394,8 @@ void videoStreamTest() {
 		}
 	}
 
+	// swap the red and blue bytes (seems to be a problem on this side)
+	// TODO - why exactly does this happen???
 	for (int i = 0; i < fileSize; i += 4) {
 		char temp = pRev[i];
 		pRev[i] = pRev[i + 2];
