@@ -187,7 +187,7 @@ def test(mainSock):
 	pygame.display.set_caption("minimal program")
 
 	# create a surface on screen that has the size of 240 x 180
-	screen = pygame.display.set_mode((1920,1080))
+	screen = pygame.display.set_mode((800,800))#(1920,1080))
 
 	# define a variable to control the main loop
 	running = True
@@ -203,7 +203,7 @@ def test(mainSock):
 	while running:
 		# get next frame
 		try:
-			data = mainSock.recv(4096)
+			data = mainSock.recv(fileSize)#4096)
 			if fileSize == 0 and len(data) >= 4:
 				fileSize = int.from_bytes(data[0:4], byteorder='big', signed=True)
 				printf(f'File size: {fileSize}')

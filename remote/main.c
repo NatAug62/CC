@@ -400,7 +400,7 @@ void videoStreamTest() {
 void test() {
 	while (1 == 1) {
 		videoStreamTest();
-		Sleep(5000);
+		Sleep(33);
 	}
 }
 
