@@ -294,19 +294,39 @@ int frames = 0;
 void videoStreamTest() {
 	// code modified from https://stackoverflow.com/questions/3291167/how-can-i-take-a-screenshot-in-a-windows-application
 	// get the device context of the screen
+	// DC contains drawing info
+	// technically a handle to a DC cuz the system hides everything from us
+	// once done using, call ReleaseDC(NULL, hScreenDC)
 	HDC hScreenDC = GetDC(NULL);
 	// and a device context to put it in
+	// a "memory DC" exists only in memory
+	// need to select a bitmap into the DC before it can be used
+	// this is done using CreateCompatibleBitmap()
+	// this specified the height, width, and color organization
+	// use DeleteDC to get rig of the DC once done using it
 	HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
 
-	int width = GetDeviceCaps(hScreenDC, HORZRES);
-	int height = GetDeviceCaps(hScreenDC, VERTRES);
+	// after ~5000 frames, this value drops to a massive negative number
+	// the 2's complement hex of this number is CCCCCCCC
+	int width = 1920;  //GetDeviceCaps(hScreenDC, HORZRES);
+	int height = 1080; // GetDeviceCaps(hScreenDC, VERTRES);
 
-	// maybe worth checking these are positive values
+	// create a bitmap compatible with the screen HDC
+	// we can specify the width and height of the bitmap
+	// since this is for the screen, we use the screen width and height
+	// the color format/organization is selected automatically to match the screen DC
+	// the bitmap is "selected into" the screen DC
+	// delete this bitmap with DeleteObject() once done using it
 	HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, width, height);
 
-	// get a new bitmap
+	// select the screen-compitable bitmap into the memory DC
+	// this will allow us to use the memory DC
+	// the new bitmap returned replaces the old bitmap
+	// if an error occurs, this function return NULL (might want to check for that)
+	// might want to delete this bitmap once we're done using it?
 	HBITMAP holdBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
 
+	// do a bit blit from the screen DC to the memory DC
 	if (!BitBlt(hMemoryDC, 0, 0, width, height, hScreenDC, 0, 0, SRCCOPY)) {
 		printf("Error: %d\n", GetLastError());
 	}
@@ -338,6 +358,9 @@ void videoStreamTest() {
 	// clean up
 	DeleteDC(hMemoryDC);
 	DeleteDC(hScreenDC);
+	if (!DeleteObject(holdBitmap)) { // do we want to delete this???
+		printf("Could not delete holBitmap\n");
+	}
 
 	// now your image is held in hBitmap. You can save it or do whatever with it
 	
@@ -365,7 +388,7 @@ void videoStreamTest() {
 	DeleteDC(DC);
 
 	//printf("Size of hbitmap: %d\n", sizeof(hBitmap));
-	printf("Display x & y: %d x %d\n", width, height);
+	printf("Frame %d x & y: %d x %d\n", frames++, width, height);
 	
 	// send data
 	int bytesToSend = fileSize;
@@ -419,6 +442,9 @@ void videoStreamTest() {
 
 	free(Pixels);
 	free(pRev);
+	if (!DeleteObject(hBitmap)) { // do we want to delete this???
+		printf("Could not delete hBitmap\n");
+	}
 }
 
 // TODO - remove testing function once no longer needed

@@ -198,6 +198,7 @@ def test(mainSock):
 	imgBuff = b''
 	surf = None
 	dirty = False
+	frames = 0
 
 	# main loop
 	while running:
@@ -231,7 +232,8 @@ def test(mainSock):
 		#print(f'Buffer is {percent} full')
 
 		if surf != None and dirty:
-			print("New frame!")
+			print(f"Displaying frame {frames}")
+			frames += 1
 			screen.fill((255, 255, 255))
 			screen.blit(surf, (0,0))
 			pygame.display.flip()
