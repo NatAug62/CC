@@ -187,7 +187,7 @@ def test(mainSock):
 	pygame.display.set_caption("minimal program")
 
 	# create a surface on screen that has the size of 240 x 180
-	screen = pygame.display.set_mode((768,432))#(1920,1080))
+	screen = pygame.display.set_mode((768,432), pygame.RESIZABLE)
 
 	# define a variable to control the main loop
 	running = True
@@ -215,7 +215,14 @@ def test(mainSock):
 			if len(buff) >= fileSize:
 				imgBuff = buff[0:fileSize]
 				surf = pygame.image.frombuffer(imgBuff, (1920, 1080), "RGBA")
-				surf = pygame.transform.scale(surf, (768,432))
+				# do some math so the scaling keeps the same aspect ratio
+				windowSize = pygame.display.get_window_size()
+				scaledWidth = windowSize[0]
+				scaledHeight = scaledWidth * 1080 / 1920 # keep image ration - scaled width * image height / image width
+				if scaledHeight > windowSize[1]: # too tall for window
+					scaledWidth = scaledWidth * windowSize[1] / scaledHeight # reduce width to keep the ration
+					scaledHeight = windowSize[1]
+				surf = pygame.transform.scale(surf, (int(scaledWidth), int(scaledHeight))) # scale the image to fit the window
 				buff = buff[fileSize:]
 				dirty = True
 		except Exception as inst:
