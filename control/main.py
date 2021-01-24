@@ -192,19 +192,42 @@ def test(mainSock):
 	# define a variable to control the main loop
 	running = True
 	# buffer to hold data and way to track file size
-	fileSize = 8294400
+	fileSize = 0
+	baseWidth = 0
+	baseHeight = 0
 	data = b''
 	buff = b''
 	imgBuff = b''
 	surf = None
 	dirty = False
 	frames = 0
+	# constants for panning and zooming
+	STEP_FACTOR = 20
+	ZOOM_FACTOR = 0.1
+	# values for offset and zoom
+	zoom = 1.0
+	offsetX = 0
+	offsetY = 0
+
+
+	# get the frame data (size, width, height)
+	try:
+		data = mainSock.recv(12)
+		baseWidth = int.from_bytes(data[0:4], byteorder='little', signed=True)
+		baseHeight = int.from_bytes(data[4:8], byteorder='little', signed=True)
+		fileSize = int.from_bytes(data[8:12], byteorder='little', signed=True)
+		print(f'File size is {fileSize} with resolution of {baseWidth} x {baseHeight}')
+	except Exception as inst:
+		print(type(inst))
+		print(inst.args)
+		print(inst)
+		quit()
 
 	# main loop
 	while running:
 		# get next frame
 		try:
-			data = mainSock.recv(fileSize)#4096)
+			data = mainSock.recv(fileSize)
 			if fileSize == 0 and len(data) >= 4:
 				fileSize = int.from_bytes(data[0:4], byteorder='big', signed=True)
 				printf(f'File size: {fileSize}')
@@ -214,14 +237,16 @@ def test(mainSock):
 				buff = buff + data
 			if len(buff) >= fileSize:
 				imgBuff = buff[0:fileSize]
-				surf = pygame.image.frombuffer(imgBuff, (1920, 1080), "RGBA")
+				surf = pygame.image.frombuffer(imgBuff, (baseWidth, baseHeight), "RGBA")
 				# do some math so the scaling keeps the same aspect ratio
 				windowSize = pygame.display.get_window_size()
 				scaledWidth = windowSize[0]
-				scaledHeight = scaledWidth * 1080 / 1920 # keep image ration - scaled width * image height / image width
+				scaledHeight = scaledWidth * baseHeight / baseWidth # keep image ration - scaled width * image height / image width
 				if scaledHeight > windowSize[1]: # too tall for window
 					scaledWidth = scaledWidth * windowSize[1] / scaledHeight # reduce width to keep the ration
 					scaledHeight = windowSize[1]
+				scaledWidth = scaledWidth * zoom
+				scaledHeight = scaledHeight * zoom
 				surf = pygame.transform.scale(surf, (int(scaledWidth), int(scaledHeight))) # scale the image to fit the window
 				buff = buff[fileSize:]
 				dirty = True
@@ -239,10 +264,15 @@ def test(mainSock):
 		#print(f'Buffer is {percent} full')
 
 		if surf != None and dirty:
+			# print what frame is being displayed - used for debug
 			print(f"Displaying frame {frames}")
 			frames += 1
-			screen.fill((255, 255, 255))
-			screen.blit(surf, (0,0))
+			# draw the new frame in the center of the window and update the display
+			screen.fill((0, 0, 0))
+			windowSize = pygame.display.get_window_size()
+			centerX = (windowSize[0] - surf.get_width()) // 2
+			centerY = (windowSize[1] - surf.get_height()) // 2
+			screen.blit(surf, (int(centerX + (offsetX * zoom)), int(centerY + (offsetY * zoom))))
 			pygame.display.flip()
 			dirty = False
 		elif dirty:
@@ -250,12 +280,36 @@ def test(mainSock):
 
 		#pygame.display.flip()
 
-		# event handling, gets all event from the event queue
+		# event handling
 		for event in pygame.event.get():
-			# only do something if the event is of type QUIT
-			if event.type == pygame.QUIT:
-				# change the value to False, to exit the main loop
+			if event.type == pygame.QUIT: # was the windows closed?
 				running = False
+			elif event.type == pygame.KEYDOWN:
+				if event.mod & pygame.KMOD_RCTRL: # right control is pressed down
+					dirty = True # assume that the image is mooved or resized
+					if event.key == pygame.K_UP: # move up - push image down - increase offsetY
+						offsetY = offsetY + (STEP_FACTOR * zoom)
+					elif event.key == pygame.K_DOWN:
+						offsetY = offsetY - (STEP_FACTOR * zoom)
+					elif event.key == pygame.K_LEFT: # move left - push image right - increase offsetX
+						offsetX = offsetX + (STEP_FACTOR * zoom)
+					elif event.key == pygame.K_RIGHT:
+						offsetX = offsetX - (STEP_FACTOR * zoom)
+					elif event.key == pygame.K_KP_PLUS or event.key == pygame.K_PLUS: # zoom in
+						zoom = zoom + ZOOM_FACTOR # zoom is done linearly - 100%, 110%, 120%, 130%, etc
+						surfSize = surf.get_size()
+						surf = pygame.transform.scale(surf, (int(surfSize[0] * (1 + ZOOM_FACTOR)), int(surfSize[1] * (1 + ZOOM_FACTOR))))
+					elif event.key == pygame.K_KP_MINUS or event.key == pygame.K_MINUS:
+						zoom = zoom - ZOOM_FACTOR
+						surfSize = surf.get_size()
+						surf = pygame.transform.scale(surf, (int(surfSize[0] * (1 - ZOOM_FACTOR)), int(surfSize[1] * (1 - ZOOM_FACTOR))))
+					elif event.key == pygame.K_c or event.key == pygame.K_r: # center the image and possibly reset the zoom
+						offsetX = 0
+						offsetY = 0
+						if event.key == pygame.K_r: # reset the zoom
+							zoom = 1.0
+					else: # image wasn't moved or resized - set dirty bit back to false
+						dirty = False
 
 """
 	Run the main loop for getting user input and 

