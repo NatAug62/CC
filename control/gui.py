@@ -3,6 +3,7 @@ This file contains all the code for pygame-based functionality
 This includes the video stream, keyboard control, and mouse control
 """
 
+import threading
 import pygame
 # import my stuff
 import utils
@@ -68,7 +69,7 @@ class pygameThread (threading.Thread):
 		self.mainSock.sendall(bytes([START_VIDEO]) + b'\0')
 		self.videoSock = utils.openConnection(VIDEO_PORT)
 		# call pygame handler to display video
-		pygameHander(self.videoSock, self.mainSock)
+		pygameHandler(self.videoSock, self.mainSock)
 		# send end signals for mouse, keyboard, and video
 		if mouseControl:
 			self.mainSock.sendall(bytes([END_MOUSE]) + b'\0')
@@ -157,14 +158,12 @@ def pygameHandler(videoSock, mainSock):
 		if not data:
 			# TODO - connection closed
 			print("Connection closed! TODO - Exit program...")
-			return
-
+			pygameThreadRun = False
 		if fileSize != 0:
 			percent = int(len(buff) * 100 / fileSize)
 			print(f'Buffer is {percent}% full')
 		else:
 			print('Buffer has been filled')
-
 		if surf != None and dirty:
 			# print what frame is being displayed - used for debug
 			print(f"Displaying frame {frames}")
@@ -212,3 +211,5 @@ def pygameHandler(videoSock, mainSock):
 							zoom = 1.0
 					else: # image wasn't moved or resized - set dirty bit back to false
 						dirty = False
+	# we've broken out of the loop
+	pygame.quit()

