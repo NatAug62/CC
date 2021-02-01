@@ -394,17 +394,15 @@ void videoStreamTest() {
 	int retCode;
 	int repeats = 0;
 
-	// send frame size if first frame
-	if (frames == 0) {
-		int buff[3];
-		buff[0] = width;
-		buff[1] = height;
-		buff[2] = fileSize;
-		retCode = send(mainSock, buff, 12, 0);
-		if (retCode == SOCKET_ERROR) {
-			printf("Could not send data: %d\n", WSAGetLastError());
-			exitOnError();
-		}
+	// send frame info (width, height, size) before frame data
+	int buff[3];
+	buff[0] = width;
+	buff[1] = height;
+	buff[2] = fileSize;
+	retCode = send(mainSock, buff, 12, 0);
+	if (retCode == SOCKET_ERROR) {
+		printf("Could not send data: %d\n", WSAGetLastError());
+		exitOnError();
 	}
 
 	// print the size of the bitmap for the current frame - used for debug
