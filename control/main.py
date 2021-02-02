@@ -65,6 +65,7 @@ def handleCommand(cmd, mainSock):
 		sleep(0.2)
 	elif cmd in ["ls", "dir"]:
 		mainSock.sendall(bytes([LIST_DIR]) + b'\0')
+		sleep(0.2)
 		# TODO - option to list contents from arbitrary directory?
 	elif cmd.startswith("upload"):
 		args = shlexSplit(cmd)

