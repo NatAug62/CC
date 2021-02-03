@@ -191,3 +191,7 @@ KEY_DICT = { # this is a dictionary to map pygame key constants to Windows virtu
 	# probably only on european keyboards???
 	#K_EURO: 0x0D #                 Euro
 }
+
+# constants used for the image metadata dictionary in gui.py
+BASE_WIDTH = 'width'
+BASE_HEIGHT = 'height'
