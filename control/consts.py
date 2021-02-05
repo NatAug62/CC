@@ -43,6 +43,9 @@ MOUSE_MIDDLE = 22
 MOUSE_WHEEL = 23 # this will be followed by a number to specify the scroll amount
 KEY_DOWN = 24 # this will be followed by the code of the key pressed (from KEY_DICT)
 KEY_UP = 25 # same as KEY_DOWN
+START_INPUT = 26 # tell the C client to simulate inputs from a list of all input events since last frame
+CONT_INPUT = 27 # tell the C client there's more input - ends with null terminator
+
 KEY_DICT = { # this is a dictionary to map pygame key constants to Windows virtual-key codes
 	K_BACKSPACE: 0x08, #   \b      backspace
 	K_TAB: 0x09, #         \t      tab
@@ -164,7 +167,7 @@ KEY_DICT = { # this is a dictionary to map pygame key constants to Windows virtu
 	K_CAPSLOCK: 0x14, #            capslock
 	K_SCROLLOCK: 0x91, #           scrollock
 	K_RSHIFT: 0xA1, #              right shift
-	K_LSHIFT: 0xA0, #              left shift
+	K_LSHIFT: 0x10, #              left shift
 	K_RCTRL: 0xA3, #               right control
 	K_LCTRL: 0xA2, #               left control
 	# the virtual-key codes for ALT seems to be VK_LMENU and VK_RMENU

