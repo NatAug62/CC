@@ -15,9 +15,18 @@ char currentDirectory[MAX_PATH];
 
 /*
 Change the current directory similar to using the 'cd' command in command prompt
-Expects a file path and a socket
+Expects a file path and a socket as arguments
 The file path can be relative ('Desktop') or absolute ('C:\Users\...\Desktop')
 The socket will be used to send either an error message or the new current directory
 Returns nothing, but the global 'currentDirectory' will be updated if successful
 */
-void changeDirectory(char* dirName, SOCKET sock)
+void changeDirectory(char* dirName, SOCKET sock);
+
+/*
+List the contents of the current directory similar to using 'dir' or 'ls'
+Expects a socket as the only argument
+The socket will be used to send either an error message or the directory contents
+Returns nothing
+TODO - optional argument to list contents of an arbitrary directory
+*/
+void listDirectoryContents(SOCKET sock);

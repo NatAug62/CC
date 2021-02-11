@@ -7,24 +7,38 @@ This source file consists of utility functions
 /*
 Connect to a TCP server on a given port at the given IP address
 Expects an IP address, port number, and socket as arguments
+The provided socket will be set to a connected socket on success and INVALID_SOCKET on failure
 Returns 0 on success or the associated error code on failure
 */
 int connectToTCP(char* addr, int port, SOCKET sock) {
 	struct sockaddr_in server;
+	int error;
 
 	// create the TCP socket
 	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sock == INVALID_SOCKET) { // return error code if failed
-		return WSAGetLastError(); }
+		error = WSAGetLastError();
+		printf("Could not create socket: %d\n", error);
+		return error;
+	}
 
 	// build the server info structure
 	server.sin_addr.s_addr = inet_addr(addr);
 	server.sin_family = AF_INET;
 	server.sin_port = htons(port);
 
-	// connect to the attacker command server
-	if (connect(sock, (struct sockaddr*) & server, sizeof(server)) != 0) {
-		return WSAGetLastError(); } // return error code if failed
+	// try connecting to the TPC server
+	if (connect(sock, (struct sockaddr*) & server, sizeof(server)) == SOCKET_ERROR) {
+		error = WSAGetLastError();
+		printf("Could not conenct to %s on port %d: %d\n", addr, port, error);
+		// try closing the socket if we couldn't connect
+		if(closesocket(sock) == SOCKET_ERROR) {
+			error = WSAGetLastError();
+			printf("Could not close socket: %d\n", error);
+		}
+		// return the last error code we got
+		return error;
+	}
 
 	// if we got this far, we've connected successfully
 	return 0;
@@ -33,26 +47,29 @@ int connectToTCP(char* addr, int port, SOCKET sock) {
 /*
 Send a string over a given socket
 Expects a socket and a string as arguments
-Strings longer than 65535 characters will be truncated to only send the first 65535 characters
 Returns 0 unless a socket error occurs, in which case the error code is returned instead
 */
 int sendString(char* data, SOCKET sock) {
-	int bytesToSend = strnlen(data, 0xFFFF);
+	int bytesToSend = strlen(data);
 	int bytesSent = 0;
 	int retCode;
 
-	printf("Sending data to attacker server...\n");
 	// loop until all data is sent
 	do {
-		// send the remaining data
+		// try sending the remaining data
 		retCode = send(sock, (char*)(data + bytesSent), bytesToSend - bytesSent, 0);
 		if (retCode == SOCKET_ERROR) { // return error code on failure
-			return WSAGetLastError();
+			retCode = WSAGetLastError();
+			printf("Send failed with error: %d\n", retCode);
+			return retCode;
 		}
+		// update the number of bytes sent
 		bytesSent += retCode;
-		if (bytesSent < bytesToSend) { // debug info if need to loop again
+		// debug info if need to loop again
+		if (bytesSent < bytesToSend) {
 			printf("Could not send all data in one attempt! Looping to send remaining data...\n"); }
 	} while (bytesSent < bytesToSend);
+	// if we got this far, the data was sent successfully
 	printf("Data has been sent!\n");
 	return 0;
 }
