@@ -20,10 +20,10 @@ All #define constants will also been included in this file
 
 // attacker IP and primary communication port
 //#define CMD_SERVER_ADDR "127.0.0.1"
-#define CMD_SERVER_ADDR "192.168.56.1"
-#define CMD_SERVER_PORT 8080
-#define VIDEO_PORT 8081
-#define INPUT_PORT 8082
+#define SERVER_ADDR "192.168.56.1"
+#define SERVER_CMD_PORT 8080
+#define SERVER_VIDEO_PORT 8081
+#define SERVER_INPUT_PORT 8082
 
 // change directory and list directory contents
 #define CHANGE_DIR 1
@@ -49,6 +49,10 @@ All #define constants will also been included in this file
 // inform the attacker what the current directory is
 #define NEW_CURR_DIR 16
 // constants for controlling the mouseand keyboard
+/*
+Frame layout:
+	START_INPUTS input_type input_values input_type input_values ... END_INPUTS
+*/
 #define MOUSE_POS 17 // this will be followed by X, Y coords for the mouse
 #define MOUSE_DOWN 18 // this will be followed by MOUSE_LEFT, MOUSE_RIGHT, or MOUSE_MIDDLE
 #define MOUSE_UP 19 // same as MOUSE_DOWN
@@ -58,5 +62,5 @@ All #define constants will also been included in this file
 #define MOUSE_WHEEL 23 // this will be followed by a number to specify the scroll amount
 #define KEY_DOWN 24 // this will be followed by a Windows virtual-key code
 #define KEY_UP 25 // same as KEY_DOWN
-#define START_INPUT 26 // tell the C client to simulate inputs from a list of all input events since last frame
-#define CONT_INPUT 27 // tell the C client there's more input - ends with null terminator
+#define START_INPUTS 26 // beginning of input list
+#define END_INPUTS 27 // end of input list

