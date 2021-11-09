@@ -8,15 +8,16 @@ Header file for the inputs.c source file
 #include "general.h"
 
 // Global socket used to receive commands for input control
-SOCKET inputSocket;
+// TODO - change this to local varibale
+//SOCKET inputSocket;
 // Global handle used to keep track of input control thread
-HANDLE inputThreadHandle;
+//HANDLE inputThreadHandle;
 /*
 Globals used to keep track of whether the keyboard and mouse are being controlled
 If both of these are set to 0, the input thread stops and the socket is closed
 */
-int keyboardControlled = 0;
-int mouseControlled = 0;
+//int keyboardControlled = 0;
+//int mouseControlled = 0;
 
 /*
 Assigns the values of an INPUT structure based on a mouse input to simulate

